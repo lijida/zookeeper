@@ -30,6 +30,7 @@ import org.apache.zookeeper.proto.ReplyHeader;
  */
 public class UnimplementedRequestProcessor implements RequestProcessor {
 
+    @Override
     public void processRequest(Request request) throws RequestProcessorException {
         KeeperException ke = new KeeperException.UnimplementedException();
         request.setException(ke);

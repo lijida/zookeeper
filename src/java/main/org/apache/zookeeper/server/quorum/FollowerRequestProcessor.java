@@ -110,6 +110,7 @@ public class FollowerRequestProcessor extends ZooKeeperCriticalThread implements
         LOG.info("FollowerRequestProcessor exited loop!");
     }
 
+    @Override
     public void processRequest(Request request) {
         if (!finished) {
             // Before sending the request, check if the request requires a

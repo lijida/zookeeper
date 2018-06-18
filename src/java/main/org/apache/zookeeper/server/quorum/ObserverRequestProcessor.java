@@ -122,6 +122,7 @@ public class ObserverRequestProcessor extends ZooKeeperCriticalThread implements
     /**
      * Simply queue the request, which will be processed in FIFO order.
      */
+    @Override
     public void processRequest(Request request) {
         if (!finished) {
             Request upgradeRequest = null;

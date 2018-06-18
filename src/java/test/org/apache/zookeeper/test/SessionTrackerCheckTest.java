@@ -55,9 +55,11 @@ public class SessionTrackerCheckTest extends ZKTestCase {
             this.sid = sid;
         }
 
+        @Override
         public void expire(Session session) {
         }
 
+        @Override
         public long getServerId() {
             return sid;
         }

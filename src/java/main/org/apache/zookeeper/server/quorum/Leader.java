@@ -914,6 +914,7 @@ public class Leader {
          *
          * @see org.apache.zookeeper.server.RequestProcessor#processRequest(org.apache.zookeeper.server.Request)
          */
+        @Override
         public void processRequest(Request request) throws RequestProcessorException {
             next.processRequest(request);
 

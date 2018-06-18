@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,14 +17,18 @@
  */
 
 package org.apache.zookeeper.server.persistence;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+
+import org.apache.jute.BinaryInputArchive;
+import org.apache.jute.BinaryOutputArchive;
+import org.apache.jute.InputArchive;
+import org.apache.jute.OutputArchive;
+import org.apache.zookeeper.common.AtomicFileOutputStream;
+import org.apache.zookeeper.server.DataTree;
+import org.apache.zookeeper.server.util.SerializeUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,16 +36,6 @@ import java.util.Map;
 import java.util.zip.Adler32;
 import java.util.zip.CheckedInputStream;
 import java.util.zip.CheckedOutputStream;
-
-import org.apache.jute.BinaryInputArchive;
-import org.apache.jute.BinaryOutputArchive;
-import org.apache.jute.InputArchive;
-import org.apache.jute.OutputArchive;
-import org.apache.zookeeper.common.AtomicFileOutputStream;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.apache.zookeeper.server.DataTree;
-import org.apache.zookeeper.server.util.SerializeUtils;
 
 /**
  * This class implements the snapshot interface.
@@ -66,13 +60,19 @@ public class FileSnap implements SnapShot {
 
     /**
      * deserialize a data tree from the most recent snapshot
-     * @return the zxid of the snapshot
+     * 反序列化快照文件
+     * <p>
+     * 副作用:修改了{@link DataTree#lastProcessedZxid}
+     *
+     * @return the zxid of the snapshot(快照数据保存的最后处理的zxid)
      */
+    @Override
     public long deserialize(DataTree dt, Map<Long, Integer> sessions)
             throws IOException {
         // we run through 100 snapshots (not all of them)
         // if we cannot get it running within 100 snapshots
         // we should  give up
+        //获取至多100个快照文件,但若最新的快照文件通过正确性校验,则只解析最新的文件
         List<File> snapList = findNValidSnapshots(100);
         if (snapList.size() == 0) {
             return -1L;
@@ -106,13 +106,14 @@ public class FileSnap implements SnapShot {
 
     /**
      * deserialize the datatree from an inputarchive
-     * @param dt the datatree to be serialized into
+     *
+     * @param dt       the datatree to be serialized into
      * @param sessions the sessions to be filled up
-     * @param ia the input archive to restore from
+     * @param ia       the input archive to restore from
      * @throws IOException
      */
     public void deserialize(DataTree dt, Map<Long, Integer> sessions,
-            InputArchive ia) throws IOException {
+                            InputArchive ia) throws IOException {
         FileHeader header = new FileHeader();
         header.deserialize(ia, "fileheader");
         if (header.getMagic() != SNAP_MAGIC) {
@@ -120,13 +121,15 @@ public class FileSnap implements SnapShot {
                     + header.getMagic() +
                     " !=  " + FileSnap.SNAP_MAGIC);
         }
-        SerializeUtils.deserializeSnapshot(dt,ia,sessions);
+        SerializeUtils.deserializeSnapshot(dt, ia, sessions);
     }
 
     /**
      * find the most recent snapshot in the database.
+     *
      * @return the file containing the most recent snapshot
      */
+    @Override
     public File findMostRecentSnapshot() throws IOException {
         List<File> files = findNValidSnapshots(1);
         if (files.size() == 0) {
@@ -136,12 +139,13 @@ public class FileSnap implements SnapShot {
     }
 
     /**
-     * find the last (maybe) valid n snapshots. this does some 
+     * find the last (maybe) valid n snapshots. this does some
      * minor checks on the validity of the snapshots. It just
      * checks for / at the end of the snapshot. This does
      * not mean that the snapshot is truly valid but is
-     * valid with a high probability. also, the most recent 
-     * will be first on the list. 
+     * valid with a high probability. also, the most recent
+     * will be first on the list.
+     *
      * @param n the number of most recent snapshots
      * @return the last n snapshots (the number might be
      * less than n in case enough snapshots are not available).
@@ -173,6 +177,7 @@ public class FileSnap implements SnapShot {
     /**
      * find the last n snapshots. this does not have
      * any checks if the snapshot might be valid or not
+     *
      * @param n the number of most recent snapshots
      * @return the last n snapshots
      * @throws IOException
@@ -181,7 +186,7 @@ public class FileSnap implements SnapShot {
         List<File> files = Util.sortDataDir(snapDir.listFiles(), SNAPSHOT_FILE_PREFIX, false);
         int count = 0;
         List<File> list = new ArrayList<File>();
-        for (File f: files) {
+        for (File f : files) {
             if (count == n)
                 break;
             if (Util.getZxidFromName(f.getName(), SNAPSHOT_FILE_PREFIX) != -1) {
@@ -194,37 +199,39 @@ public class FileSnap implements SnapShot {
 
     /**
      * serialize the datatree and sessions
-     * @param dt the datatree to be serialized
+     *
+     * @param dt       the datatree to be serialized
      * @param sessions the sessions to be serialized
-     * @param oa the output archive to serialize into
-     * @param header the header of this snapshot
+     * @param oa       the output archive to serialize into
+     * @param header   the header of this snapshot
      * @throws IOException
      */
-    protected void serialize(DataTree dt,Map<Long, Integer> sessions,
-            OutputArchive oa, FileHeader header) throws IOException {
+    protected void serialize(DataTree dt, Map<Long, Integer> sessions,
+                             OutputArchive oa, FileHeader header) throws IOException {
         // this is really a programmatic error and not something that can
         // happen at runtime
-        if(header==null)
+        if (header == null)
             throw new IllegalStateException(
                     "Snapshot's not open for writing: uninitialized header");
         header.serialize(oa, "fileheader");
-        SerializeUtils.serializeSnapshot(dt,oa,sessions);
+        SerializeUtils.serializeSnapshot(dt, oa, sessions);
     }
 
     /**
      * serialize the datatree and session into the file snapshot
-     * @param dt the datatree to be serialized
+     *
+     * @param dt       the datatree to be serialized
      * @param sessions the sessions to be serialized
      * @param snapShot the file to store snapshot into
-     * @param fsync sync the file immediately after write
+     * @param fsync    sync the file immediately after write
      */
     public synchronized void serialize(DataTree dt, Map<Long, Integer> sessions, File snapShot, boolean fsync)
             throws IOException {
         if (!close) {
             try (CheckedOutputStream crcOut =
                          new CheckedOutputStream(new BufferedOutputStream(fsync ? new AtomicFileOutputStream(snapShot) :
-                                                                                  new FileOutputStream(snapShot)),
-                                                 new Adler32())) {
+                                 new FileOutputStream(snapShot)),
+                                 new Adler32())) {
                 //CheckedOutputStream cout = new CheckedOutputStream()
                 OutputArchive oa = BinaryOutputArchive.getArchive(crcOut);
                 FileHeader header = new FileHeader(SNAP_MAGIC, VERSION, dbId);

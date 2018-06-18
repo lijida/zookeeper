@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,13 +18,13 @@
 
 package org.apache.zookeeper.server;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * This class manages the cleanup of snapshots and corresponding transaction
@@ -32,6 +32,8 @@ import org.slf4j.LoggerFactory;
  * 'autopurge.purgeInterval'. It keeps the most recent
  * 'autopurge.snapRetainCount' number of snapshots and corresponding transaction
  * logs.
+ * <p>
+ * 为了避免快照和事务日志的膨胀,使用此类对文件进行清理
  */
 public class DatadirCleanupManager {
 
@@ -46,12 +48,26 @@ public class DatadirCleanupManager {
 
     private PurgeTaskStatus purgeTaskStatus = PurgeTaskStatus.NOT_STARTED;
 
+    /**
+     * 快照目录
+     */
     private final File snapDir;
 
+    /**
+     * 事务日志目录
+     */
     private final File dataLogDir;
 
+    /**
+     * 清理后保留的snapshot的个数
+     * 对应配置:autopurge.snapRetainCount,大于等于3,默认3
+     */
     private final int snapRetainCount;
 
+    /**
+     * 清理任务TimeTask执行周期,即几小时执行一次,单位:小时
+     * 对应配置autopurge.purgeInterval
+     */
     private final int purgeInterval;
 
     private Timer timer;
@@ -59,18 +75,14 @@ public class DatadirCleanupManager {
     /**
      * Constructor of DatadirCleanupManager. It takes the parameters to schedule
      * the purge task.
-     * 
-     * @param snapDir
-     *            snapshot directory
-     * @param dataLogDir
-     *            transaction log directory
-     * @param snapRetainCount
-     *            number of snapshots to be retained after purge
-     * @param purgeInterval
-     *            purge interval in hours
+     *
+     * @param snapDir         snapshot directory
+     * @param dataLogDir      transaction log directory
+     * @param snapRetainCount number of snapshots to be retained after purge
+     * @param purgeInterval   purge interval in hours
      */
     public DatadirCleanupManager(File snapDir, File dataLogDir, int snapRetainCount,
-            int purgeInterval) {
+                                 int purgeInterval) {
         this.snapDir = snapDir;
         this.dataLogDir = dataLogDir;
         this.snapRetainCount = snapRetainCount;
@@ -88,7 +100,7 @@ public class DatadirCleanupManager {
      * <code>purgeInterval</code> of <code>0</code> or
      * <code>negative integer</code> will not schedule the purge task.
      * </p>
-     * 
+     *
      * @see PurgeTxnLog#purge(File, File, int)
      */
     public void start() {
@@ -147,7 +159,7 @@ public class DatadirCleanupManager {
 
     /**
      * Returns the status of the purge task.
-     * 
+     *
      * @return the status of the purge task
      */
     public PurgeTaskStatus getPurgeTaskStatus() {
@@ -156,7 +168,7 @@ public class DatadirCleanupManager {
 
     /**
      * Returns the snapshot directory.
-     * 
+     *
      * @return the snapshot directory.
      */
     public File getSnapDir() {
@@ -165,7 +177,7 @@ public class DatadirCleanupManager {
 
     /**
      * Returns transaction log directory.
-     * 
+     *
      * @return the transaction log directory.
      */
     public File getDataLogDir() {
@@ -174,7 +186,7 @@ public class DatadirCleanupManager {
 
     /**
      * Returns purge interval in hours.
-     * 
+     *
      * @return the purge interval in hours.
      */
     public int getPurgeInterval() {
@@ -183,7 +195,7 @@ public class DatadirCleanupManager {
 
     /**
      * Returns the number of snapshots to be retained after purge.
-     * 
+     *
      * @return the number of snapshots to be retained after purge.
      */
     public int getSnapRetainCount() {

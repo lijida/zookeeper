@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,17 +18,13 @@
 
 package org.apache.zookeeper.server;
 
-import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-
 import org.apache.zookeeper.common.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * WorkerService is a worker thread pool for running tasks and is implemented
@@ -36,35 +32,41 @@ import org.slf4j.LoggerFactory;
  * threads, which it does by creating N separate single thread ExecutorServices,
  * or non-assignable threads, which it does by creating a single N-thread
  * ExecutorService.
- *   - NIOServerCnxnFactory uses a non-assignable WorkerService because the
- *     socket IO requests are order independent and allowing the
- *     ExecutorService to handle thread assignment gives optimal performance.
- *   - CommitProcessor uses an assignable WorkerService because requests for
- *     a given session must be processed in order.
+ * - NIOServerCnxnFactory uses a non-assignable WorkerService because the
+ * socket IO requests are order independent and allowing the
+ * ExecutorService to handle thread assignment gives optimal performance.
+ * - CommitProcessor uses an assignable WorkerService because requests for
+ * a given session must be processed in order.
  * ExecutorService provides queue management and thread restarting, so it's
  * useful even with a single thread.
  */
 public class WorkerService {
     private static final Logger LOG =
-        LoggerFactory.getLogger(WorkerService.class);
+            LoggerFactory.getLogger(WorkerService.class);
 
     private final ArrayList<ExecutorService> workers =
-        new ArrayList<ExecutorService>();
+            new ArrayList<>();
 
     private final String threadNamePrefix;
     private int numWorkerThreads;
+    /**
+     * worker是线程池列表,有两种分配线程的方式
+     * 1.列表中只有一个线程池,但线程池大小为numWorkerThreads
+     * 2.列表中有numWorkerThreads个线程池,但每个线程池只有一个线程
+     * 若此值为true,则使用第二种方式
+     */
     private boolean threadsAreAssignable;
     private long shutdownTimeoutMS = 5000;
 
     private volatile boolean stopped = true;
 
     /**
-     * @param name                  worker threads are named <name>Thread-##
-     * @param numThreads            number of worker threads (0 - N)
-     *                              If 0, scheduled work is run immediately by
-     *                              the calling thread.
-     * @param useAssignableThreads  whether the worker threads should be
-     *                              individually assignable or not
+     * @param name                 worker threads are named <name>Thread-##
+     * @param numThreads           number of worker threads (0 - N)
+     *                             If 0, scheduled work is run immediately by
+     *                             the calling thread.
+     * @param useAssignableThreads whether the worker threads should be
+     *                             individually assignable or not
      */
     public WorkerService(String name, int numThreads,
                          boolean useAssignableThreads) {
@@ -107,6 +109,9 @@ public class WorkerService {
      * assignment is a single mod operation on the number of threads.  If a
      * worker thread pool is not being used, work is done directly by
      * this thread.
+     *
+     * @param workRequest
+     * @param id          根据此值选择使用哪一个thread处理workRequest
      */
     public void schedule(WorkRequest workRequest, long id) {
         if (stopped) {
@@ -115,7 +120,7 @@ public class WorkerService {
         }
 
         ScheduledWorkRequest scheduledWorkRequest =
-            new ScheduledWorkRequest(workRequest);
+                new ScheduledWorkRequest(workRequest);
 
         // If we have a worker thread pool, use that; otherwise, do the work
         // directly.
@@ -143,6 +148,9 @@ public class WorkerService {
         }
     }
 
+    /**
+     * 虽然此类基础ZooKeeperThread,但实际其只作为Runnable交由线程池处理
+     */
     private class ScheduledWorkRequest extends ZooKeeperThread {
         private final WorkRequest workRequest;
 
@@ -185,15 +193,15 @@ public class WorkerService {
         DaemonThreadFactory(String name, int firstThreadNum) {
             threadNumber.set(firstThreadNum);
             SecurityManager s = System.getSecurityManager();
-            group = (s != null)? s.getThreadGroup() :
-                                 Thread.currentThread().getThreadGroup();
+            group = (s != null) ? s.getThreadGroup() :
+                    Thread.currentThread().getThreadGroup();
             namePrefix = name + "-";
         }
 
         public Thread newThread(Runnable r) {
             Thread t = new Thread(group, r,
-                                  namePrefix + threadNumber.getAndIncrement(),
-                                  0);
+                    namePrefix + threadNumber.getAndIncrement(),
+                    0);
             if (!t.isDaemon())
                 t.setDaemon(true);
             if (t.getPriority() != Thread.NORM_PRIORITY)
@@ -205,13 +213,13 @@ public class WorkerService {
     public void start() {
         if (numWorkerThreads > 0) {
             if (threadsAreAssignable) {
-                for(int i = 1; i <= numWorkerThreads; ++i) {
+                for (int i = 1; i <= numWorkerThreads; ++i) {
                     workers.add(Executors.newFixedThreadPool(
-                        1, new DaemonThreadFactory(threadNamePrefix, i)));
+                            1, new DaemonThreadFactory(threadNamePrefix, i)));
                 }
             } else {
                 workers.add(Executors.newFixedThreadPool(
-                    numWorkerThreads, new DaemonThreadFactory(threadNamePrefix)));
+                        numWorkerThreads, new DaemonThreadFactory(threadNamePrefix)));
             }
         }
         stopped = false;
@@ -221,7 +229,7 @@ public class WorkerService {
         stopped = true;
 
         // Signal for graceful shutdown
-        for(ExecutorService worker : workers) {
+        for (ExecutorService worker : workers) {
             worker.shutdown();
         }
     }
@@ -230,12 +238,12 @@ public class WorkerService {
         // Give the worker threads time to finish executing
         long now = Time.currentElapsedTime();
         long endTime = now + shutdownTimeoutMS;
-        for(ExecutorService worker : workers) {
+        for (ExecutorService worker : workers) {
             boolean terminated = false;
             while ((now = Time.currentElapsedTime()) <= endTime) {
                 try {
                     terminated = worker.awaitTermination(
-                        endTime - now, TimeUnit.MILLISECONDS);
+                            endTime - now, TimeUnit.MILLISECONDS);
                     break;
                 } catch (InterruptedException e) {
                     // ignore

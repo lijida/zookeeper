@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,22 +17,6 @@
  */
 
 package org.apache.zookeeper.server;
-
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.security.cert.Certificate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.jute.Record;
 import org.apache.zookeeper.WatchedEvent;
@@ -43,16 +27,28 @@ import org.apache.zookeeper.proto.RequestHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.security.cert.Certificate;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * Interface to a Server connection - represents a connection from a client
  * to the server.
  */
 public abstract class ServerCnxn implements Stats, Watcher {
-    // This is just an arbitrary object to represent requests issued by
-    // (aka owned by) this class
+    /**
+     * This is just an arbitrary object to represent requests issued by (aka owned by) this class
+     * 若发生会话转移,则此值不一致
+     */
     final public static Object me = new Object();
     private static final Logger LOG = LoggerFactory.getLogger(ServerCnxn.class);
-    
+
     private Set<Id> authInfo = Collections.newSetFromMap(new ConcurrentHashMap<Id, Boolean>());
 
     /**
@@ -67,18 +63,21 @@ public abstract class ServerCnxn implements Stats, Watcher {
     abstract void close();
 
     public abstract void sendResponse(ReplyHeader h, Record r, String tag)
-        throws IOException;
+            throws IOException;
 
     /* notify the client the session is closing and close/cleanup socket */
     abstract void sendCloseSession();
 
+    @Override
     public abstract void process(WatchedEvent event);
 
     public abstract long getSessionId();
 
     abstract void setSessionId(long sessionId);
 
-    /** auth info for the cnxn, returns an unmodifyable list */
+    /**
+     * auth info for the cnxn, returns an unmodifyable list
+     */
     public List<Id> getAuthInfo() {
         return Collections.unmodifiableList(new ArrayList<>(authInfo));
     }
@@ -116,11 +115,15 @@ public abstract class ServerCnxn implements Stats, Watcher {
             super(msg);
         }
 
+        @Override
         public String toString() {
             return "EndOfStreamException: " + getMessage();
         }
     }
 
+    /**
+     * 修改统计值,当接收一个packet时此方法被调用
+     */
     protected void packetReceived() {
         incrPacketsReceived();
         ServerStats serverStats = serverStats();
@@ -129,6 +132,9 @@ public abstract class ServerCnxn implements Stats, Watcher {
         }
     }
 
+    /**
+     * 修改统计值,当发送一个packet时此方法被调用
+     */
     protected void packetSent() {
         incrPacketsSent();
         ServerStats serverStats = serverStats();
@@ -138,7 +144,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
     }
 
     protected abstract ServerStats serverStats();
-    
+
     protected final Date established = new Date();
 
     protected final AtomicLong packetsReceived = new AtomicLong();
@@ -173,7 +179,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
     protected long incrPacketsReceived() {
         return packetsReceived.incrementAndGet();
     }
-    
+
     protected void incrOutstandingRequests(RequestHeader h) {
     }
 
@@ -182,8 +188,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
     }
 
     protected synchronized void updateStatsForResponse(long cxid, long zxid,
-            String op, long start, long end)
-    {
+                                                       String op, long start, long end) {
         // don't overwrite with "special" xids - we're interested
         // in the clients last real operation
         if (cxid >= 0) {
@@ -204,16 +209,19 @@ public abstract class ServerCnxn implements Stats, Watcher {
         totalLatency += elapsed;
     }
 
+    @Override
     public Date getEstablished() {
-        return (Date)established.clone();
+        return (Date) established.clone();
     }
 
     public abstract long getOutstandingRequests();
 
+    @Override
     public long getPacketsReceived() {
         return packetsReceived.longValue();
     }
 
+    @Override
     public long getPacketsSent() {
         return packetsSent.longValue();
     }
@@ -266,13 +274,18 @@ public abstract class ServerCnxn implements Stats, Watcher {
     }
 
     public abstract InetSocketAddress getRemoteSocketAddress();
+
     public abstract int getInterestOps();
+
     public abstract boolean isSecure();
+
     public abstract Certificate[] getClientCertificateChain();
+
     public abstract void setClientCertificateChain(Certificate[] chain);
-    
+
     /**
      * Print information about the connection.
+     *
      * @param brief iff true prints brief details, otw full detail
      * @return information about this connection
      */
@@ -350,8 +363,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
      * clean up the socket related to a command and also make sure we flush the
      * data before we do that
      *
-     * @param pwriter
-     *            the pwriter for a command socket
+     * @param pwriter the pwriter for a command socket
      */
     public void cleanupWriterSocket(PrintWriter pwriter) {
         try {

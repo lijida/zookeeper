@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,12 +17,6 @@
  */
 
 package org.apache.zookeeper.server;
-
-import java.io.IOException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-
-import javax.management.JMException;
 
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.jmx.ManagedUtil;
@@ -35,16 +29,21 @@ import org.apache.zookeeper.server.quorum.QuorumPeerConfig.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.management.JMException;
+import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 /**
  * This class starts and runs a standalone ZooKeeperServer.
  */
 @InterfaceAudience.Public
 public class ZooKeeperServerMain {
     private static final Logger LOG =
-        LoggerFactory.getLogger(ZooKeeperServerMain.class);
+            LoggerFactory.getLogger(ZooKeeperServerMain.class);
 
     private static final String USAGE =
-        "Usage: ZooKeeperServerMain configfile | port datadir [ticktime] [maxcnxns]";
+            "Usage: ZooKeeperServerMain configfile | port datadir [ticktime] [maxcnxns]";
 
     // ZooKeeper server supports two kinds of connection: unencrypted and encrypted.
     private ServerCnxnFactory cnxnFactory;
@@ -88,14 +87,13 @@ public class ZooKeeperServerMain {
     }
 
     protected void initializeAndRun(String[] args)
-        throws ConfigException, IOException, AdminServerException
-    {
+            throws ConfigException, IOException, AdminServerException {
         try {
             ManagedUtil.registerLog4jMBeans();
         } catch (JMException e) {
             LOG.warn("Unable to register log4j JMX control", e);
         }
-
+        //再次进行配置文件zoo.cfg的解析
         ServerConfig config = new ServerConfig();
         if (args.length == 1) {
             config.parse(args[0]);
@@ -108,6 +106,7 @@ public class ZooKeeperServerMain {
 
     /**
      * Run from a ServerConfig.
+     *
      * @param config ServerConfig to use.
      * @throws IOException
      * @throws AdminServerException
@@ -121,6 +120,7 @@ public class ZooKeeperServerMain {
             // so rather than spawning another thread, we will just call
             // run() in this thread.
             // create a file logger url from the command line args
+            //创建ZooKeeper数据管理器
             txnLog = new FileTxnSnapLog(config.dataLogDir, config.dataDir);
             final ZooKeeperServer zkServer = new ZooKeeperServer(txnLog,
                     config.tickTime, config.minSessionTimeout, config.maxSessionTimeout, null);
@@ -139,8 +139,10 @@ public class ZooKeeperServerMain {
 
             boolean needStartZKServer = true;
             if (config.getClientPortAddress() != null) {
+                //创建ServerCnxnFactory
                 cnxnFactory = ServerCnxnFactory.createFactory();
                 cnxnFactory.configure(config.getClientPortAddress(), config.getMaxClientCnxns(), false);
+                //启动ServerCnxnFactory线程
                 cnxnFactory.startup(zkServer);
                 // zkServer has been started. So we don't need to start it again in secureCnxnFactory.
                 needStartZKServer = false;
@@ -159,6 +161,7 @@ public class ZooKeeperServerMain {
 
             // Watch status of ZooKeeper server. It will do a graceful shutdown
             // if the server is not running or hits an internal error.
+            //服务器正常启动时,运行到此处阻塞,只有server的state变为ERROR或SHUTDOWN时继续运行后面的代码
             shutdownLatch.await();
 
             shutdown();

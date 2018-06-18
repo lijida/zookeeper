@@ -40,6 +40,7 @@ public class LocalSessionTracker extends SessionTrackerImpl {
         return false;
     }
 
+    @Override
     public boolean addGlobalSession(long sessionId, int sessionTimeout) {
         throw new UnsupportedOperationException();
     }

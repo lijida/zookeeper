@@ -97,6 +97,7 @@ public class CommitProcessorConcurrencyTest extends ZKTestCase {
     class MockCommitProcessor extends CommitProcessor {
         MockCommitProcessor() {
             super(new RequestProcessor() {
+                @Override
                 public void processRequest(Request request)
                         throws RequestProcessorException {
                     processedRequests.offer(request);

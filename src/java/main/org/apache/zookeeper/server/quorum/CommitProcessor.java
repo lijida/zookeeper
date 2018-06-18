@@ -384,6 +384,7 @@ public class CommitProcessor extends ZooKeeperCriticalThread implements
             }
         }
 
+        @Override
         public void doWork() throws RequestProcessorException {
             try {
                 nextProcessor.processRequest(request);
@@ -416,6 +417,7 @@ public class CommitProcessor extends ZooKeeperCriticalThread implements
         wakeup();
     }
 
+    @Override
     public void processRequest(Request request) {
         if (stopped) {
             return;

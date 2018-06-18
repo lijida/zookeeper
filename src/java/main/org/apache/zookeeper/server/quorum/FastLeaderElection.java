@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,14 +18,6 @@
 
 
 package org.apache.zookeeper.server.quorum;
-
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.zookeeper.common.Time;
 import org.apache.zookeeper.jmx.MBeanRegistry;
@@ -39,15 +31,35 @@ import org.apache.zookeeper.server.util.ZxidUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
 
 /**
  * Implementation of leader election using TCP. It uses an object of the class
  * QuorumCnxManager to manage connections. Otherwise, the algorithm is push-based
  * as with the other UDP implementations.
- *
+ * <p>
  * There are a few parameters that can be tuned to change its behavior. First,
  * finalizeWait determines the amount of time to wait until deciding upon a leader.
  * This is part of the leader election algorithm.
+ * <p>
+ * Leader选举算法流程
+ * 1.自增选举轮次
+ * 2.初始化选票
+ * 3.发送初始化选票
+ * 4.接收外部投票
+ * 5.判断选举轮次
+ * 6.选票PK
+ * 7.变更投票
+ * 8.选票归档
+ * 9.统计投票
+ * 10.更新服务器状态
  */
 
 
@@ -58,6 +70,8 @@ public class FastLeaderElection implements Election {
      * Determine how much time a process has to wait
      * once it believes that it has reached the end of
      * leader election.
+     * <p>
+     * 完成Leader选举之后需要等待时长
      */
     final static int finalizeWait = 200;
 
@@ -66,15 +80,17 @@ public class FastLeaderElection implements Election {
      * Upper bound on the amount of time between two consecutive
      * notification checks. This impacts the amount of time to get
      * the system up again after long partitions. Currently 60 seconds.
+     * <p>
+     * 两个连续通知检查之间的最大时长
      */
 
     final static int maxNotificationInterval = 60000;
-    
+
     /**
      * This value is passed to the methods that check the quorum
      * majority of an established ensemble for those values that
-     * should not be taken into account in the comparison 
-     * (electionEpoch and zxid). 
+     * should not be taken into account in the comparison
+     * (electionEpoch and zxid).
      */
     final static int IGNOREVALUE = -1;
 
@@ -82,6 +98,8 @@ public class FastLeaderElection implements Election {
      * Connection manager. Fast leader election uses TCP for
      * communication between peers, and QuorumCnxManager manages
      * such connections.
+     * <p>
+     * 管理服务器之间的连接
      */
 
     QuorumCnxManager manager;
@@ -92,44 +110,52 @@ public class FastLeaderElection implements Election {
      * a given peer has changed its vote, either because it has
      * joined leader election or because it learned of another
      * peer with higher zxid or same zxid and higher server id
+     * <p>
+     * Notification表示收到的选举投票信息（其他服务器发来的选举投票信息），
+     * 其包含了被选举者的id、zxid、选举周期等信息，
+     * 其buildMsg方法将选举信息封装至ByteBuffer中再进行发送。
      */
-
     static public class Notification {
         /*
          * Format version, introduced in 3.4.6
          */
-
         public final static int CURRENTVERSION = 0x2;
         int version;
 
-        /*
+        /**
          * Proposed leader
+         * 被推选的leader的id
          */
         long leader;
 
-        /*
+        /**
          * zxid of the proposed leader
+         * 被推选的leader的事务id
          */
         long zxid;
 
         /*
          * Epoch
+         * 推选者的选举周期
          */
         long electionEpoch;
 
         /*
          * current state of sender
+         * 推选者的状态
          */
         QuorumPeer.ServerState state;
 
         /*
          * Address of sender
+         * 推选者的id
          */
         long sid;
-        
+
         QuorumVerifier qv;
         /*
          * epoch of the proposed leader
+         * 被推选者的选举周期
          */
         long peerEpoch;
     }
@@ -140,18 +166,20 @@ public class FastLeaderElection implements Election {
      * Messages that a peer wants to send to other peers.
      * These messages can be both Notifications and Acks
      * of reception of notification.
+     * <p>
+     * 发送给其他服务器的选举投票信息，也包含了被选举者的id、zxid、选举周期等信息。
      */
     static public class ToSend {
         static enum mType {crequest, challenge, notification, ack}
 
         ToSend(mType type,
-                long leader,
-                long zxid,
-                long electionEpoch,
-                ServerState state,
-                long sid,
-                long peerEpoch,
-                byte[] configData) {
+               long leader,
+               long zxid,
+               long electionEpoch,
+               ServerState state,
+               long sid,
+               long peerEpoch,
+               byte[] configData) {
 
             this.leader = leader;
             this.zxid = zxid;
@@ -162,43 +190,55 @@ public class FastLeaderElection implements Election {
             this.configData = configData;
         }
 
-        /*
+        /**
          * Proposed leader in the case of notification
+         * 被推举的leader的id
          */
         long leader;
 
-        /*
+        /**
          * id contains the tag for acks, and zxid for notifications
+         * 被推举的leader的最大事务id
          */
         long zxid;
 
-        /*
+        /**
          * Epoch
+         * 推举者的选举周期
          */
         long electionEpoch;
 
-        /*
+        /**
          * Current state;
+         * 推举者的状态
          */
         QuorumPeer.ServerState state;
 
-        /*
+        /**
          * Address of recipient
+         * 推举者的id
          */
         long sid;
 
-        /*
+        /**
          * Used to send a QuorumVerifier (configuration info)
          */
         byte[] configData = dummyData;
 
         /*
          * Leader epoch
+         *  被推举的leader的选举周期
          */
         long peerEpoch;
     }
 
+    /**
+     * 选票发送队列,用于保存待发送的选票
+     */
     LinkedBlockingQueue<ToSend> sendqueue;
+    /**
+     * 选票接收队列,用于保存接收到的外部投票
+     */
     LinkedBlockingQueue<Notification> recvqueue;
 
     /**
@@ -213,10 +253,17 @@ public class FastLeaderElection implements Election {
         /**
          * Receives messages from instance of QuorumCnxManager on
          * method run(), and processes such messages.
+         * WorkerReceiver实现了Runnable接口，是选票接收器。其会不断地从QuorumCnxManager中获取其他服务器发来的选举消息，并将其转换成一个选票，然后保存到recvqueue中，在选票接收过程中，如果发现该外部选票的选举轮次小于当前服务器的，那么忽略该外部投票，同时立即发送自己的内部投票。其是将QuorumCnxManager的Message转化为FastLeaderElection的Notification
          */
 
-        class WorkerReceiver extends ZooKeeperThread  {
+        class WorkerReceiver extends ZooKeeperThread {
+            /**
+             * 是否终止
+             */
             volatile boolean stop;
+            /**
+             * 服务器之间的连接
+             */
             QuorumCnxManager manager;
 
             WorkerReceiver(QuorumCnxManager manager) {
@@ -225,16 +272,25 @@ public class FastLeaderElection implements Election {
                 this.manager = manager;
             }
 
+            /**
+             * ，其首先会从QuorumCnxManager中的recvQueue队列中取出其他服务器发来的选举消息，消息封装在Message数据结构中。然后判断消息中的服务器id是否包含在可以投票的服务器集合中，若不是，则会将本服务器的内部投票发送给该服务器，
+             */
+            @Override
             public void run() {
-
+                //响应
                 Message response;
                 while (!stop) {
                     // Sleeps on receive
                     try {
+                        // 从recvQueue中取出一个选举投票消息（从其他服务器发送过来）
                         response = manager.pollRecvQueue(3000, TimeUnit.MILLISECONDS);
-                        if(response == null) continue;
+                        // 无投票，跳过
+                        if (response == null) {
+                            continue;
+                        }
 
-                        // The current protocol and two previous generations all send at least 28 bytes
+                        // The current protocol and two pr
+                        // evious generations all send at least 28 bytes
                         if (response.buffer.capacity() < 28) {
                             LOG.error("Got a short response: " + response.buffer.capacity());
                             continue;
@@ -247,7 +303,7 @@ public class FastLeaderElection implements Election {
 
                         // this is the backwardCompatibility mode for no version information
                         boolean backCompatibility40 = (response.buffer.capacity() == 40);
-                        
+
                         response.buffer.clear();
 
                         // Instantiate Notification and set its attributes
@@ -266,7 +322,7 @@ public class FastLeaderElection implements Election {
                                 /*
                                  * Version added in 3.4.6
                                  */
-                                
+
                                 version = response.buffer.getInt();
                             } else {
                                 LOG.info("Backward compatibility mode (36 bits), server id: {}", response.sid);
@@ -284,8 +340,8 @@ public class FastLeaderElection implements Election {
                             byte b[] = new byte[configLength];
 
                             response.buffer.get(b);
-                                                       
-                            synchronized(self) {
+
+                            synchronized (self) {
                                 try {
                                     rqv = self.configFromString(new String(b));
                                     QuorumVerifier curQV = self.getQuorumVerifier();
@@ -309,19 +365,19 @@ public class FastLeaderElection implements Election {
                                     }
                                 } catch (IOException e) {
                                     LOG.error("Something went wrong while processing config received from {}", response.sid);
-                               } catch (ConfigException e) {
-                                   LOG.error("Something went wrong while processing config received from {}", response.sid);
-                               }
-                            }                          
+                                } catch (ConfigException e) {
+                                    LOG.error("Something went wrong while processing config received from {}", response.sid);
+                                }
+                            }
                         } else {
                             LOG.info("Backward compatibility mode (before reconfig), server id: {}", response.sid);
                         }
-                       
+
                         /*
                          * If it is from a non-voting server (such as an observer or
                          * a non-voting follower), respond right away.
                          */
-                        if(!validVoter(response.sid)) {
+                        if (!validVoter(response.sid)) {
                             Vote current = self.getCurrentVote();
                             QuorumVerifier qv = self.getQuorumVerifier();
                             ToSend notmsg = new ToSend(ToSend.mType.notification,
@@ -344,20 +400,20 @@ public class FastLeaderElection implements Election {
                             // State of peer that sent this message
                             QuorumPeer.ServerState ackstate = QuorumPeer.ServerState.LOOKING;
                             switch (rstate) {
-                            case 0:
-                                ackstate = QuorumPeer.ServerState.LOOKING;
-                                break;
-                            case 1:
-                                ackstate = QuorumPeer.ServerState.FOLLOWING;
-                                break;
-                            case 2:
-                                ackstate = QuorumPeer.ServerState.LEADING;
-                                break;
-                            case 3:
-                                ackstate = QuorumPeer.ServerState.OBSERVING;
-                                break;
-                            default:
-                                continue;
+                                case 0:
+                                    ackstate = QuorumPeer.ServerState.LOOKING;
+                                    break;
+                                case 1:
+                                    ackstate = QuorumPeer.ServerState.FOLLOWING;
+                                    break;
+                                case 2:
+                                    ackstate = QuorumPeer.ServerState.LEADING;
+                                    break;
+                                case 3:
+                                    ackstate = QuorumPeer.ServerState.OBSERVING;
+                                    break;
+                                default:
+                                    continue;
                             }
 
                             n.leader = rleader;
@@ -371,7 +427,7 @@ public class FastLeaderElection implements Election {
                             /*
                              * Print notification info
                              */
-                            if(LOG.isInfoEnabled()){
+                            if (LOG.isInfoEnabled()) {
                                 printNotification(n);
                             }
 
@@ -379,7 +435,7 @@ public class FastLeaderElection implements Election {
                              * If this server is looking, then send proposed leader
                              */
 
-                            if(self.getPeerState() == QuorumPeer.ServerState.LOOKING){
+                            if (self.getPeerState() == QuorumPeer.ServerState.LOOKING) {
                                 recvqueue.offer(n);
 
                                 /*
@@ -387,8 +443,8 @@ public class FastLeaderElection implements Election {
                                  * message is also looking and its logical clock is
                                  * lagging behind.
                                  */
-                                if((ackstate == QuorumPeer.ServerState.LOOKING)
-                                        && (n.electionEpoch < logicalclock.get())){
+                                if ((ackstate == QuorumPeer.ServerState.LOOKING)
+                                        && (n.electionEpoch < logicalclock.get())) {
                                     Vote v = getVote();
                                     QuorumVerifier qv = self.getQuorumVerifier();
                                     ToSend notmsg = new ToSend(ToSend.mType.notification,
@@ -407,8 +463,8 @@ public class FastLeaderElection implements Election {
                                  * is looking, then send back what it believes to be the leader.
                                  */
                                 Vote current = self.getCurrentVote();
-                                if(ackstate == QuorumPeer.ServerState.LOOKING){
-                                    if(LOG.isDebugEnabled()){
+                                if (ackstate == QuorumPeer.ServerState.LOOKING) {
+                                    if (LOG.isDebugEnabled()) {
                                         LOG.debug("Sending new notification. My id ={} recipient={} zxid=0x{} leader={} config version = {}",
                                                 self.getId(),
                                                 response.sid,
@@ -449,17 +505,20 @@ public class FastLeaderElection implements Election {
             volatile boolean stop;
             QuorumCnxManager manager;
 
-            WorkerSender(QuorumCnxManager manager){
+            WorkerSender(QuorumCnxManager manager) {
                 super("WorkerSender");
                 this.stop = false;
                 this.manager = manager;
             }
 
+            @Override
             public void run() {
                 while (!stop) {
                     try {
                         ToSend m = sendqueue.poll(3000, TimeUnit.MILLISECONDS);
-                        if(m == null) continue;
+                        if (m == null) {
+                            continue;
+                        }
 
                         process(m);
                     } catch (InterruptedException e) {
@@ -472,22 +531,34 @@ public class FastLeaderElection implements Election {
             /**
              * Called by run() once there is a new message to send.
              *
-             * @param m     message to send
+             * @param m message to send
              */
             void process(ToSend m) {
                 ByteBuffer requestBuffer = buildMsg(m.state.ordinal(),
-                                                    m.leader,
-                                                    m.zxid,
-                                                    m.electionEpoch,
-                                                    m.peerEpoch,
-                                                    m.configData);
+                        m.leader,
+                        m.zxid,
+                        m.electionEpoch,
+                        m.peerEpoch,
+                        m.configData);
 
                 manager.toSend(m.sid, requestBuffer);
 
             }
         }
 
+        /**
+         * 选票发送器
+         */
         WorkerSender ws;
+        /**
+         * 选票接收器
+         * 1.获取其他服务器发来的选举消息,并将其转换成一个选票,然后保存到recvqueue队列中区
+         * 2.若发现外部投票的选举轮次小于当前服务器,则(1)忽略该外部投票(2)同时立即发出自己的内部投票
+         * 3.若当前服务器不是LOOKING状态(Leader选举成功),则(1)忽略该外部投票(2)同时立即发出自己的内部投票
+         * 4.若外部投票来自Observer,则(1)忽略该外部投票(2)同时立即发出自己的内部投票
+         * <p>
+         * 问题:什么时候知道Leader已经选举成功?
+         */
         WorkerReceiver wr;
         Thread wsThread = null;
         Thread wrThread = null;
@@ -495,7 +566,7 @@ public class FastLeaderElection implements Election {
         /**
          * Constructor of class Messenger.
          *
-         * @param manager   Connection manager
+         * @param manager Connection manager
          */
         Messenger(QuorumCnxManager manager) {
 
@@ -515,7 +586,7 @@ public class FastLeaderElection implements Election {
         /**
          * Starts instances of WorkerSender and WorkerReceiver
          */
-        void start(){
+        void start() {
             this.wsThread.start();
             this.wrThread.start();
         }
@@ -523,33 +594,51 @@ public class FastLeaderElection implements Election {
         /**
          * Stops instances of WorkerSender and WorkerReceiver
          */
-        void halt(){
+        void halt() {
             this.ws.stop = true;
             this.wr.stop = true;
         }
 
     }
 
+    /**
+     * 投票者
+     */
     QuorumPeer self;
+    /**
+     * 包含选票接收器和选票发送器
+     */
     Messenger messenger;
+    /**
+     * Leader选举的轮次
+     */
     AtomicLong logicalclock = new AtomicLong(); /* Election instance */
+    /**
+     * 推选的leader的id
+     */
     long proposedLeader;
+    /**
+     * 推选的leader的zxid
+     */
     long proposedZxid;
+    /**
+     * 推选的leader的选举周期
+     */
     long proposedEpoch;
 
 
     /**
      * Returns the current vlue of the logical clock counter
      */
-    public long getLogicalClock(){
+    public long getLogicalClock() {
         return logicalclock.get();
     }
 
     static ByteBuffer buildMsg(int state,
-            long leader,
-            long zxid,
-            long electionEpoch,
-            long epoch) {
+                               long leader,
+                               long zxid,
+                               long electionEpoch,
+                               long epoch) {
         byte requestBytes[] = new byte[40];
         ByteBuffer requestBuffer = ByteBuffer.wrap(requestBytes);
 
@@ -569,11 +658,11 @@ public class FastLeaderElection implements Election {
     }
 
     static ByteBuffer buildMsg(int state,
-            long leader,
-            long zxid,
-            long electionEpoch,
-            long epoch,
-            byte[] configData) {
+                               long leader,
+                               long zxid,
+                               long electionEpoch,
+                               long epoch,
+                               byte[] configData) {
         byte requestBytes[] = new byte[44 + configData.length];
         ByteBuffer requestBuffer = ByteBuffer.wrap(requestBytes);
 
@@ -600,10 +689,10 @@ public class FastLeaderElection implements Election {
      * is the connection manager. Such an object should be created only once
      * by each peer during an instance of the ZooKeeper service.
      *
-     * @param self  QuorumPeer that created this object
-     * @param manager   Connection manager
+     * @param self    QuorumPeer that created this object
+     * @param manager Connection manager
      */
-    public FastLeaderElection(QuorumPeer self, QuorumCnxManager manager){
+    public FastLeaderElection(QuorumPeer self, QuorumCnxManager manager) {
         this.stop = false;
         this.manager = manager;
         starter(self, manager);
@@ -616,8 +705,8 @@ public class FastLeaderElection implements Election {
      * a separate method. As we have a single constructor currently,
      * it is not strictly necessary to have it separate.
      *
-     * @param self      QuorumPeer that created this object
-     * @param manager   Connection manager
+     * @param self    QuorumPeer that created this object
+     * @param manager Connection manager
      */
     private void starter(QuorumPeer self, QuorumCnxManager manager) {
         this.self = self;
@@ -637,19 +726,24 @@ public class FastLeaderElection implements Election {
     }
 
     private void leaveInstance(Vote v) {
-        if(LOG.isDebugEnabled()){
+        if (LOG.isDebugEnabled()) {
             LOG.debug("About to leave FLE instance: leader={}, zxid=0x{}, my id={}, my state={}",
-                v.getId(), Long.toHexString(v.getZxid()), self.getId(), self.getPeerState());
+                    v.getId(), Long.toHexString(v.getZxid()), self.getId(), self.getPeerState());
         }
         recvqueue.clear();
     }
 
-    public QuorumCnxManager getCnxManager(){
+    public QuorumCnxManager getCnxManager() {
         return manager;
     }
 
+    /**
+     * 是否停止选举
+     */
     volatile boolean stop;
-    public void shutdown(){
+
+    @Override
+    public void shutdown() {
         stop = true;
         proposedLeader = -1;
         proposedZxid = -1;
@@ -673,17 +767,17 @@ public class FastLeaderElection implements Election {
                     QuorumPeer.ServerState.LOOKING,
                     sid,
                     proposedEpoch, qv.toString().getBytes());
-            if(LOG.isDebugEnabled()){
-                LOG.debug("Sending Notification: " + proposedLeader + " (n.leader), 0x"  +
-                      Long.toHexString(proposedZxid) + " (n.zxid), 0x" + Long.toHexString(logicalclock.get())  +
-                      " (n.round), " + sid + " (recipient), " + self.getId() +
-                      " (myid), 0x" + Long.toHexString(proposedEpoch) + " (n.peerEpoch)");
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Sending Notification: " + proposedLeader + " (n.leader), 0x" +
+                        Long.toHexString(proposedZxid) + " (n.zxid), 0x" + Long.toHexString(logicalclock.get()) +
+                        " (n.round), " + sid + " (recipient), " + self.getId() +
+                        " (myid), 0x" + Long.toHexString(proposedEpoch) + " (n.peerEpoch)");
             }
             sendqueue.offer(notmsg);
         }
     }
 
-    private void printNotification(Notification n){
+    private void printNotification(Notification n) {
         LOG.info("Notification: "
                 + Long.toHexString(n.version) + " (message format version), "
                 + n.leader + " (n.leader), 0x"
@@ -692,21 +786,25 @@ public class FastLeaderElection implements Election {
                 + " (n.state), " + n.sid + " (n.sid), 0x"
                 + Long.toHexString(n.peerEpoch) + " (n.peerEPoch), "
                 + self.getPeerState() + " (my state)"
-                + (n.qv!=null ? (Long.toHexString(n.qv.getVersion()) + " (n.config version)"):""));
+                + (n.qv != null ? (Long.toHexString(n.qv.getVersion()) + " (n.config version)") : ""));
     }
 
 
     /**
      * Check if a pair (server id, zxid) succeeds our
      * current vote.
+     * 变更投票条件
+     * 1.外部投票轮次大于内部投票
+     * 2.外部投票ZXID大于内部投票
+     * 3.外部投票SID大于内部投票
      *
-     * @param id    Server identifier
-     * @param zxid  Last zxid observed by the issuer of this vote
+     * @param id   Server identifier
+     * @param zxid Last zxid observed by the issuer of this vote
      */
     protected boolean totalOrderPredicate(long newId, long newZxid, long newEpoch, long curId, long curZxid, long curEpoch) {
         LOG.debug("id: " + newId + ", proposed id: " + curId + ", zxid: 0x" +
                 Long.toHexString(newZxid) + ", proposed zxid: 0x" + Long.toHexString(curZxid));
-        if(self.getQuorumVerifier().getWeight(newId) == 0){
+        if (self.getQuorumVerifier().getWeight(newId) == 0) {
             return false;
         }
 
@@ -720,24 +818,22 @@ public class FastLeaderElection implements Election {
 
         return ((newEpoch > curEpoch) ||
                 ((newEpoch == curEpoch) &&
-                ((newZxid > curZxid) || ((newZxid == curZxid) && (newId > curId)))));
+                        ((newZxid > curZxid) || ((newZxid == curZxid) && (newId > curId)))));
     }
 
     /**
      * Termination predicate. Given a set of votes, determines if have
      * sufficient to declare the end of the election round.
-     * 
-     * @param votes
-     *            Set of votes
-     * @param vote
-     *            Identifier of the vote received last
+     *
+     * @param votes Set of votes
+     * @param vote  Identifier of the vote received last
      */
     private boolean termPredicate(Map<Long, Vote> votes, Vote vote) {
         SyncedLearnerTracker voteSet = new SyncedLearnerTracker();
         voteSet.addQuorumVerifier(self.getQuorumVerifier());
         if (self.getLastSeenQuorumVerifier() != null
                 && self.getLastSeenQuorumVerifier().getVersion() > self
-                        .getQuorumVerifier().getVersion()) {
+                .getQuorumVerifier().getVersion()) {
             voteSet.addQuorumVerifier(self.getLastSeenQuorumVerifier());
         }
 
@@ -761,14 +857,14 @@ public class FastLeaderElection implements Election {
      * electing over and over a peer that has crashed and it is no
      * longer leading.
      *
-     * @param votes set of votes
-     * @param   leader  leader id
-     * @param   electionEpoch   epoch id
+     * @param votes         set of votes
+     * @param leader        leader id
+     * @param electionEpoch epoch id
      */
     private boolean checkLeader(
             Map<Long, Vote> votes,
             long leader,
-            long electionEpoch){
+            long electionEpoch) {
 
         boolean predicate = true;
 
@@ -779,18 +875,18 @@ public class FastLeaderElection implements Election {
          * from leader stating that it is leading, then predicate is false.
          */
 
-        if(leader != self.getId()){
-            if(votes.get(leader) == null) predicate = false;
-            else if(votes.get(leader).getState() != ServerState.LEADING) predicate = false;
-        } else if(logicalclock.get() != electionEpoch) {
+        if (leader != self.getId()) {
+            if (votes.get(leader) == null) predicate = false;
+            else if (votes.get(leader).getState() != ServerState.LEADING) predicate = false;
+        } else if (logicalclock.get() != electionEpoch) {
             predicate = false;
         }
 
         return predicate;
     }
 
-    synchronized void updateProposal(long leader, long zxid, long epoch){
-        if(LOG.isDebugEnabled()){
+    synchronized void updateProposal(long leader, long zxid, long epoch) {
+        if (LOG.isDebugEnabled()) {
             LOG.debug("Updating proposal: " + leader + " (newleader), 0x"
                     + Long.toHexString(zxid) + " (newzxid), " + proposedLeader
                     + " (oldleader), 0x" + Long.toHexString(proposedZxid) + " (oldzxid)");
@@ -800,7 +896,7 @@ public class FastLeaderElection implements Election {
         proposedEpoch = epoch;
     }
 
-    synchronized public Vote getVote(){
+    synchronized public Vote getVote() {
         return new Vote(proposedLeader, proposedZxid, proposedEpoch);
     }
 
@@ -811,12 +907,11 @@ public class FastLeaderElection implements Election {
      *
      * @return ServerState
      */
-    private ServerState learningState(){
-        if(self.getLearnerType() == LearnerType.PARTICIPANT){
+    private ServerState learningState() {
+        if (self.getLearnerType() == LearnerType.PARTICIPANT) {
             LOG.debug("I'm a participant: " + self.getId());
             return ServerState.FOLLOWING;
-        }
-        else{
+        } else {
             LOG.debug("I'm an observer: " + self.getId());
             return ServerState.OBSERVING;
         }
@@ -827,8 +922,8 @@ public class FastLeaderElection implements Election {
      *
      * @return long
      */
-    private long getInitId(){
-        if(self.getQuorumVerifier().getVotingMembers().containsKey(self.getId()))       
+    private long getInitId() {
+        if (self.getQuorumVerifier().getVotingMembers().containsKey(self.getId()))
             return self.getId();
         else return Long.MIN_VALUE;
     }
@@ -838,8 +933,8 @@ public class FastLeaderElection implements Election {
      *
      * @return long
      */
-    private long getInitLastLoggedZxid(){
-        if(self.getLearnerType() == LearnerType.PARTICIPANT)
+    private long getInitLastLoggedZxid() {
+        if (self.getLearnerType() == LearnerType.PARTICIPANT)
             return self.getLastLoggedZxid();
         else return Long.MIN_VALUE;
     }
@@ -849,15 +944,15 @@ public class FastLeaderElection implements Election {
      *
      * @return long
      */
-    private long getPeerEpoch(){
-        if(self.getLearnerType() == LearnerType.PARTICIPANT)
-        	try {
-        		return self.getCurrentEpoch();
-        	} catch(IOException e) {
-        		RuntimeException re = new RuntimeException(e.getMessage());
-        		re.setStackTrace(e.getStackTrace());
-        		throw re;
-        	}
+    private long getPeerEpoch() {
+        if (self.getLearnerType() == LearnerType.PARTICIPANT)
+            try {
+                return self.getCurrentEpoch();
+            } catch (IOException e) {
+                RuntimeException re = new RuntimeException(e.getMessage());
+                re.setStackTrace(e.getStackTrace());
+                throw re;
+            }
         else return Long.MIN_VALUE;
     }
 
@@ -866,6 +961,7 @@ public class FastLeaderElection implements Election {
      * changes its state to LOOKING, this method is invoked, and it
      * sends notifications to all other peers.
      */
+    @Override
     public Vote lookForLeader() throws InterruptedException {
         try {
             self.jmxLeaderElectionBean = new LeaderElectionBean();
@@ -876,7 +972,7 @@ public class FastLeaderElection implements Election {
             self.jmxLeaderElectionBean = null;
         }
         if (self.start_fle == 0) {
-           self.start_fle = Time.currentElapsedTime();
+            self.start_fle = Time.currentElapsedTime();
         }
         try {
             Map<Long, Vote> recvset = new HashMap<Long, Vote>();
@@ -885,13 +981,14 @@ public class FastLeaderElection implements Election {
 
             int notTimeout = finalizeWait;
 
-            synchronized(this){
+            synchronized (this) {
                 logicalclock.incrementAndGet();
                 updateProposal(getInitId(), getInitLastLoggedZxid(), getPeerEpoch());
             }
 
             LOG.info("New election. My id =  " + self.getId() +
                     ", proposed zxid=0x" + Long.toHexString(proposedZxid));
+            //发送notification给每个节点，告述他们自己当前选举的人，默认一开始选举自己
             sendNotifications();
 
             /*
@@ -899,11 +996,12 @@ public class FastLeaderElection implements Election {
              */
 
             while ((self.getPeerState() == ServerState.LOOKING) &&
-                    (!stop)){
+                    (!stop)) {
                 /*
                  * Remove next notification from queue, times out after 2 times
                  * the termination time
                  */
+                //当前节点启动了几个接收线程，用于接收其他节点选举的结果，并将选举的结果存到recvqueue中
                 Notification n = recvqueue.poll(notTimeout,
                         TimeUnit.MILLISECONDS);
 
@@ -911,8 +1009,8 @@ public class FastLeaderElection implements Election {
                  * Sends more notifications if haven't received enough.
                  * Otherwise processes new notification.
                  */
-                if(n == null){
-                    if(manager.haveDelivered()){
+                if (n == null) {
+                    if (manager.haveDelivered()) {
                         sendNotifications();
                     } else {
                         manager.connectAll();
@@ -921,146 +1019,145 @@ public class FastLeaderElection implements Election {
                     /*
                      * Exponential backoff
                      */
-                    int tmpTimeOut = notTimeout*2;
-                    notTimeout = (tmpTimeOut < maxNotificationInterval?
+                    int tmpTimeOut = notTimeout * 2;
+                    notTimeout = (tmpTimeOut < maxNotificationInterval ?
                             tmpTimeOut : maxNotificationInterval);
                     LOG.info("Notification time out: " + notTimeout);
-                } 
-                else if (validVoter(n.sid) && validVoter(n.leader)) {
+                } else if (validVoter(n.sid) && validVoter(n.leader)) {
                     /*
                      * Only proceed if the vote comes from a replica in the current or next
                      * voting view for a replica in the current or next voting view.
                      */
                     switch (n.state) {
-                    case LOOKING:
-                        if (getInitLastLoggedZxid() == -1) {
-                            LOG.debug("Ignoring notification as our zxid is -1");
-                            break;
-                        }
-                        if (n.zxid == -1) {
-                            LOG.debug("Ignoring notification from member with -1 zxid" + n.sid);
-                            break;
-                        }
-                        // If notification > current, replace and send messages out
-                        if (n.electionEpoch > logicalclock.get()) {
-                            logicalclock.set(n.electionEpoch);
-                            recvset.clear();
-                            if(totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
-                                    getInitId(), getInitLastLoggedZxid(), getPeerEpoch())) {
+                        case LOOKING:
+                            if (getInitLastLoggedZxid() == -1) {
+                                LOG.debug("Ignoring notification as our zxid is -1");
+                                break;
+                            }
+                            if (n.zxid == -1) {
+                                LOG.debug("Ignoring notification from member with -1 zxid" + n.sid);
+                                break;
+                            }
+                            // If notification > current, replace and send messages out
+                            if (n.electionEpoch > logicalclock.get()) {
+                                logicalclock.set(n.electionEpoch);
+                                recvset.clear();
+                                if (totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
+                                        getInitId(), getInitLastLoggedZxid(), getPeerEpoch())) {
+                                    updateProposal(n.leader, n.zxid, n.peerEpoch);
+                                } else {
+                                    updateProposal(getInitId(),
+                                            getInitLastLoggedZxid(),
+                                            getPeerEpoch());
+                                }
+                                sendNotifications();
+                            } else if (n.electionEpoch < logicalclock.get()) {
+                                if (LOG.isDebugEnabled()) {
+                                    LOG.debug("Notification election epoch is smaller than logicalclock. n.electionEpoch = 0x"
+                                            + Long.toHexString(n.electionEpoch)
+                                            + ", logicalclock=0x" + Long.toHexString(logicalclock.get()));
+                                }
+                                break;
+                            } else if (totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
+                                    proposedLeader, proposedZxid, proposedEpoch)) {
                                 updateProposal(n.leader, n.zxid, n.peerEpoch);
-                            } else {
-                                updateProposal(getInitId(),
-                                        getInitLastLoggedZxid(),
-                                        getPeerEpoch());
+                                sendNotifications();
                             }
-                            sendNotifications();
-                        } else if (n.electionEpoch < logicalclock.get()) {
-                            if(LOG.isDebugEnabled()){
-                                LOG.debug("Notification election epoch is smaller than logicalclock. n.electionEpoch = 0x"
-                                        + Long.toHexString(n.electionEpoch)
-                                        + ", logicalclock=0x" + Long.toHexString(logicalclock.get()));
+
+                            if (LOG.isDebugEnabled()) {
+                                LOG.debug("Adding vote: from=" + n.sid +
+                                        ", proposed leader=" + n.leader +
+                                        ", proposed zxid=0x" + Long.toHexString(n.zxid) +
+                                        ", proposed election epoch=0x" + Long.toHexString(n.electionEpoch));
+                            }
+
+                            recvset.put(n.sid, new Vote(n.leader, n.zxid, n.electionEpoch, n.peerEpoch));
+
+                            if (termPredicate(recvset,
+                                    new Vote(proposedLeader, proposedZxid,
+                                            logicalclock.get(), proposedEpoch))) {
+
+                                // Verify if there is any change in the proposed leader
+                                while ((n = recvqueue.poll(finalizeWait,
+                                        TimeUnit.MILLISECONDS)) != null) {
+                                    if (totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
+                                            proposedLeader, proposedZxid, proposedEpoch)) {
+                                        recvqueue.put(n);
+                                        break;
+                                    }
+                                }
+
+                                /*
+                                 * This predicate is true once we don't read any new
+                                 * relevant message from the reception queue
+                                 */
+                                if (n == null) {
+                                    self.setPeerState((proposedLeader == self.getId()) ?
+                                            ServerState.LEADING : learningState());
+
+                                    Vote endVote = new Vote(proposedLeader,
+                                            proposedZxid, proposedEpoch);
+                                    leaveInstance(endVote);
+                                    return endVote;
+                                }
                             }
                             break;
-                        } else if (totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
-                                proposedLeader, proposedZxid, proposedEpoch)) {
-                            updateProposal(n.leader, n.zxid, n.peerEpoch);
-                            sendNotifications();
-                        }
+                        case OBSERVING:
+                            LOG.debug("Notification from observer: " + n.sid);
+                            break;
+                        case FOLLOWING:
+                        case LEADING:
+                            /*
+                             * Consider all notifications from the same epoch
+                             * together.
+                             */
+                            if (n.electionEpoch == logicalclock.get()) {
+                                recvset.put(n.sid, new Vote(n.leader, n.zxid, n.electionEpoch, n.peerEpoch));
+                                if (termPredicate(recvset, new Vote(n.leader,
+                                        n.zxid, n.electionEpoch, n.peerEpoch, n.state))
+                                        && checkLeader(outofelection, n.leader, n.electionEpoch)) {
+                                    self.setPeerState((n.leader == self.getId()) ?
+                                            ServerState.LEADING : learningState());
 
-                        if(LOG.isDebugEnabled()){
-                            LOG.debug("Adding vote: from=" + n.sid +
-                                    ", proposed leader=" + n.leader +
-                                    ", proposed zxid=0x" + Long.toHexString(n.zxid) +
-                                    ", proposed election epoch=0x" + Long.toHexString(n.electionEpoch));
-                        }
-
-                        recvset.put(n.sid, new Vote(n.leader, n.zxid, n.electionEpoch, n.peerEpoch));
-
-                        if (termPredicate(recvset,
-                                new Vote(proposedLeader, proposedZxid,
-                                        logicalclock.get(), proposedEpoch))) {
-
-                            // Verify if there is any change in the proposed leader
-                            while((n = recvqueue.poll(finalizeWait,
-                                    TimeUnit.MILLISECONDS)) != null){
-                                if(totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
-                                        proposedLeader, proposedZxid, proposedEpoch)){
-                                    recvqueue.put(n);
-                                    break;
+                                    Vote endVote = new Vote(n.leader, n.zxid, n.peerEpoch);
+                                    leaveInstance(endVote);
+                                    return endVote;
                                 }
                             }
 
                             /*
-                             * This predicate is true once we don't read any new
-                             * relevant message from the reception queue
+                             * Before joining an established ensemble, verify that
+                             * a majority are following the same leader.
+                             * Only peer epoch is used to check that the votes come
+                             * from the same ensemble. This is because there is at
+                             * least one corner case in which the ensemble can be
+                             * created with inconsistent zxid and election epoch
+                             * info. However, given that only one ensemble can be
+                             * running at a single point in time and that each
+                             * epoch is used only once, using only the epoch to
+                             * compare the votes is sufficient.
+                             *
+                             * @see https://issues.apache.org/jira/browse/ZOOKEEPER-1732
                              */
-                            if (n == null) {
-                                self.setPeerState((proposedLeader == self.getId()) ?
-                                        ServerState.LEADING: learningState());
-
-                                Vote endVote = new Vote(proposedLeader,
-                                        proposedZxid, proposedEpoch);
-                                leaveInstance(endVote);
-                                return endVote;
-                            }
-                        }
-                        break;
-                    case OBSERVING:
-                        LOG.debug("Notification from observer: " + n.sid);
-                        break;
-                    case FOLLOWING:
-                    case LEADING:
-                        /*
-                         * Consider all notifications from the same epoch
-                         * together.
-                         */
-                        if(n.electionEpoch == logicalclock.get()){
-                            recvset.put(n.sid, new Vote(n.leader, n.zxid, n.electionEpoch, n.peerEpoch));
-                            if(termPredicate(recvset, new Vote(n.leader,
-                                            n.zxid, n.electionEpoch, n.peerEpoch, n.state))
-                                            && checkLeader(outofelection, n.leader, n.electionEpoch)) {
-                                self.setPeerState((n.leader == self.getId()) ?
-                                        ServerState.LEADING: learningState());
-
+                            outofelection.put(n.sid, new Vote(n.leader,
+                                    IGNOREVALUE, IGNOREVALUE, n.peerEpoch, n.state));
+                            if (termPredicate(outofelection, new Vote(n.leader,
+                                    IGNOREVALUE, IGNOREVALUE, n.peerEpoch, n.state))
+                                    && checkLeader(outofelection, n.leader, IGNOREVALUE)) {
+                                synchronized (this) {
+                                    logicalclock.set(n.electionEpoch);
+                                    self.setPeerState((n.leader == self.getId()) ?
+                                            ServerState.LEADING : learningState());
+                                }
                                 Vote endVote = new Vote(n.leader, n.zxid, n.peerEpoch);
                                 leaveInstance(endVote);
                                 return endVote;
                             }
-                        }
-
-                        /*
-                         * Before joining an established ensemble, verify that
-                         * a majority are following the same leader.
-                         * Only peer epoch is used to check that the votes come
-                         * from the same ensemble. This is because there is at
-                         * least one corner case in which the ensemble can be
-                         * created with inconsistent zxid and election epoch
-                         * info. However, given that only one ensemble can be
-                         * running at a single point in time and that each 
-                         * epoch is used only once, using only the epoch to 
-                         * compare the votes is sufficient.
-                         * 
-                         * @see https://issues.apache.org/jira/browse/ZOOKEEPER-1732
-                         */
-                        outofelection.put(n.sid, new Vote(n.leader, 
-                                IGNOREVALUE, IGNOREVALUE, n.peerEpoch, n.state));
-                        if (termPredicate(outofelection, new Vote(n.leader,
-                                IGNOREVALUE, IGNOREVALUE, n.peerEpoch, n.state))
-                                && checkLeader(outofelection, n.leader, IGNOREVALUE)) {
-                            synchronized(this){
-                                logicalclock.set(n.electionEpoch);
-                                self.setPeerState((n.leader == self.getId()) ?
-                                        ServerState.LEADING: learningState());
-                            }
-                            Vote endVote = new Vote(n.leader, n.zxid, n.peerEpoch);
-                            leaveInstance(endVote);
-                            return endVote;
-                        }
-                        break;
-                    default:
-                        LOG.warn("Notification state unrecoginized: " + n.state
-                              + " (n.state), " + n.sid + " (n.sid)");
-                        break;
+                            break;
+                        default:
+                            LOG.warn("Notification state unrecoginized: " + n.state
+                                    + " (n.state), " + n.sid + " (n.sid)");
+                            break;
                     }
                 } else {
                     if (!validVoter(n.leader)) {
@@ -1074,7 +1171,7 @@ public class FastLeaderElection implements Election {
             return null;
         } finally {
             try {
-                if(self.jmxLeaderElectionBean != null){
+                if (self.jmxLeaderElectionBean != null) {
                     MBeanRegistry.getInstance().unregister(
                             self.jmxLeaderElectionBean);
                 }
@@ -1091,7 +1188,7 @@ public class FastLeaderElection implements Election {
      * Check if a given sid is represented in either the current or
      * the next voting view
      *
-     * @param sid     Server identifier
+     * @param sid Server identifier
      * @return boolean
      */
     private boolean validVoter(long sid) {

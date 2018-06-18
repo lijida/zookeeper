@@ -74,6 +74,7 @@ public class LearnerHandlerTest extends ZKTestCase {
             super(snapLog);
         }
 
+        @Override
         public long getDataTreeLastProcessedZxid() {
             return lastProcessedZxid;
         }

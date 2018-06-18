@@ -121,6 +121,7 @@ public class PurgeTxnLog {
             MyFileFilter(String prefix){
                 this.prefix=prefix;
             }
+            @Override
             public boolean accept(File f){
                 if(!f.getName().startsWith(prefix + "."))
                     return false;

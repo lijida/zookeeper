@@ -105,6 +105,7 @@ public class QuorumMaj implements QuorumVerifier {
      * 
      * @param id
      */
+    @Override
     public long getWeight(long id) {
         return (long) 1;
     }
@@ -130,26 +131,32 @@ public class QuorumMaj implements QuorumVerifier {
      * Verifies if a set is a majority. Assumes that ackSet contains acks only
      * from votingMembers
      */
+    @Override
     public boolean containsQuorum(Set<Long> ackSet) {
         return (ackSet.size() > half);
     }
 
+    @Override
     public Map<Long, QuorumServer> getAllMembers() {
         return allMembers;
     }
 
+    @Override
     public Map<Long, QuorumServer> getVotingMembers() {
         return votingMembers;
     }
 
+    @Override
     public Map<Long, QuorumServer> getObservingMembers() {
         return observingMembers;
     }
 
+    @Override
     public long getVersion() {
         return version;
     }
     
+    @Override
     public void setVersion(long ver) {
         version = ver;
     }

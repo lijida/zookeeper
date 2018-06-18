@@ -435,11 +435,13 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
     }
 
     /** {@inheritDoc} */
+    @Override
     public int getMaxClientCnxnsPerHost() {
         return maxClientCnxns;
     }
 
     /** {@inheritDoc} */
+    @Override
     public void setMaxClientCnxnsPerHost(int max) {
         maxClientCnxns = max;
     }
@@ -488,6 +490,7 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
         parentChannel = bootstrap.bind(localAddress);
     }
     
+    @Override
     public void reconfigure(InetSocketAddress addr) {
        Channel oldChannel = parentChannel;
        try {

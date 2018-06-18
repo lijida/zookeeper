@@ -54,6 +54,7 @@ public class ProposalRequestProcessor implements RequestProcessor {
         syncProcessor.start();
     }
 
+    @Override
     public void processRequest(Request request) throws RequestProcessorException {
         // LOG.warn("Ack>>> cxid = " + request.cxid + " type = " +
         // request.type + " id = " + request.sessionId);

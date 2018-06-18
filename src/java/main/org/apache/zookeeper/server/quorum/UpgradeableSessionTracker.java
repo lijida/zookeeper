@@ -45,6 +45,7 @@ public abstract class UpgradeableSessionTracker implements SessionTracker {
             expirer, this.localSessionsWithTimeouts, tickTime, id, listener);
     }
 
+    @Override
     public boolean isTrackingSession(long sessionId) {
         return isLocalSession(sessionId) || isGlobalSession(sessionId);
     }
@@ -82,6 +83,7 @@ public abstract class UpgradeableSessionTracker implements SessionTracker {
         return -1;
     }
 
+    @Override
     public void checkGlobalSession(long sessionId, Object owner)
             throws KeeperException.SessionExpiredException,
             KeeperException.SessionMovedException {

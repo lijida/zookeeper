@@ -86,6 +86,7 @@ public class FinalRequestProcessor implements RequestProcessor {
         this.zks = zks;
     }
 
+    @Override
     public void processRequest(Request request) {
         if (LOG.isDebugEnabled()) {
             LOG.debug("Processing request:: " + request);
@@ -151,7 +152,7 @@ public class FinalRequestProcessor implements RequestProcessor {
         String lastOp = "NA";
         zks.decInProcess();
         Code err = Code.OK;
-        Record rsp = null;
+        Record response = null;
         try {
             if (request.getHdr() != null && request.getHdr().getType() == OpCode.error) {
                 /*
@@ -201,7 +202,7 @@ public class FinalRequestProcessor implements RequestProcessor {
             }
             case OpCode.multi: {
                 lastOp = "MULT";
-                rsp = new MultiResponse() ;
+                response = new MultiResponse() ;
 
                 for (ProcessTxnResult subTxnResult : rc.multiResult) {
 
@@ -233,14 +234,14 @@ public class FinalRequestProcessor implements RequestProcessor {
                             throw new IOException("Invalid type of op");
                     }
 
-                    ((MultiResponse)rsp).add(subResult);
+                    ((MultiResponse)response).add(subResult);
                 }
 
                 break;
             }
             case OpCode.create: {
                 lastOp = "CREA";
-                rsp = new CreateResponse(rc.path);
+                response = new CreateResponse(rc.path);
                 err = Code.get(rc.err);
                 break;
             }
@@ -248,7 +249,7 @@ public class FinalRequestProcessor implements RequestProcessor {
             case OpCode.createTTL:
             case OpCode.createContainer: {
                 lastOp = "CREA";
-                rsp = new Create2Response(rc.path, rc.stat);
+                response = new Create2Response(rc.path, rc.stat);
                 err = Code.get(rc.err);
                 break;
             }
@@ -260,19 +261,19 @@ public class FinalRequestProcessor implements RequestProcessor {
             }
             case OpCode.setData: {
                 lastOp = "SETD";
-                rsp = new SetDataResponse(rc.stat);
+                response = new SetDataResponse(rc.stat);
                 err = Code.get(rc.err);
                 break;
             }
             case OpCode.reconfig: {
                 lastOp = "RECO";
-                rsp = new GetDataResponse(((QuorumZooKeeperServer)zks).self.getQuorumVerifier().toString().getBytes(), rc.stat);
+                response = new GetDataResponse(((QuorumZooKeeperServer)zks).self.getQuorumVerifier().toString().getBytes(), rc.stat);
                 err = Code.get(rc.err);
                 break;
             }
             case OpCode.setACL: {
                 lastOp = "SETA";
-                rsp = new SetACLResponse(rc.stat);
+                response = new SetACLResponse(rc.stat);
                 err = Code.get(rc.err);
                 break;
             }
@@ -286,12 +287,12 @@ public class FinalRequestProcessor implements RequestProcessor {
                 SyncRequest syncRequest = new SyncRequest();
                 ByteBufferInputStream.byteBuffer2Record(request.request,
                         syncRequest);
-                rsp = new SyncResponse(syncRequest.getPath());
+                response = new SyncResponse(syncRequest.getPath());
                 break;
             }
             case OpCode.check: {
                 lastOp = "CHEC";
-                rsp = new SetDataResponse(rc.stat);
+                response = new SetDataResponse(rc.stat);
                 err = Code.get(rc.err);
                 break;
             }
@@ -307,7 +308,7 @@ public class FinalRequestProcessor implements RequestProcessor {
                 }
                 Stat stat = zks.getZKDatabase().statNode(path, existsRequest
                         .getWatch() ? cnxn : null);
-                rsp = new ExistsResponse(stat);
+                response = new ExistsResponse(stat);
                 break;
             }
             case OpCode.getData: {
@@ -325,7 +326,7 @@ public class FinalRequestProcessor implements RequestProcessor {
                 Stat stat = new Stat();
                 byte b[] = zks.getZKDatabase().getData(getDataRequest.getPath(), stat,
                         getDataRequest.getWatch() ? cnxn : null);
-                rsp = new GetDataResponse(b, stat);
+                response = new GetDataResponse(b, stat);
                 break;
             }
             case OpCode.setWatches: {
@@ -349,7 +350,7 @@ public class FinalRequestProcessor implements RequestProcessor {
                 Stat stat = new Stat();
                 List<ACL> acl =
                     zks.getZKDatabase().getACL(getACLRequest.getPath(), stat);
-                rsp = new GetACLResponse(acl, stat);
+                response = new GetACLResponse(acl, stat);
                 break;
             }
             case OpCode.getChildren: {
@@ -367,7 +368,7 @@ public class FinalRequestProcessor implements RequestProcessor {
                 List<String> children = zks.getZKDatabase().getChildren(
                         getChildrenRequest.getPath(), null, getChildrenRequest
                                 .getWatch() ? cnxn : null);
-                rsp = new GetChildrenResponse(children);
+                response = new GetChildrenResponse(children);
                 break;
             }
             case OpCode.getChildren2: {
@@ -386,7 +387,7 @@ public class FinalRequestProcessor implements RequestProcessor {
                 List<String> children = zks.getZKDatabase().getChildren(
                         getChildren2Request.getPath(), stat, getChildren2Request
                                 .getWatch() ? cnxn : null);
-                rsp = new GetChildren2Response(children, stat);
+                response = new GetChildren2Response(children, stat);
                 break;
             }
             case OpCode.checkWatches: {
@@ -448,15 +449,16 @@ public class FinalRequestProcessor implements RequestProcessor {
         }
 
         long lastZxid = zks.getZKDatabase().getDataTreeLastProcessedZxid();
-        ReplyHeader hdr =
+        ReplyHeader header =
             new ReplyHeader(request.cxid, lastZxid, err.intValue());
 
         zks.serverStats().updateLatency(request.createTime);
+        //统计处理
         cnxn.updateStatsForResponse(request.cxid, lastZxid, lastOp,
                     request.createTime, Time.currentElapsedTime());
 
         try {
-            cnxn.sendResponse(hdr, rsp, "response");
+            cnxn.sendResponse(header, response, "response");
             if (request.type == OpCode.closeSession) {
                 cnxn.sendCloseSession();
             }
