@@ -135,10 +135,8 @@ public abstract class ServerCnxnFactory {
             LOG.info("Using {} as server connection factory", serverCnxnFactoryName);
             return serverCnxnFactory;
         } catch (Exception e) {
-            IOException ioe = new IOException("Couldn't instantiate "
-                    + serverCnxnFactoryName);
-            ioe.initCause(e);
-            throw ioe;
+            throw new IOException("Couldn't instantiate "
+                    + serverCnxnFactoryName, e);
         }
     }
 

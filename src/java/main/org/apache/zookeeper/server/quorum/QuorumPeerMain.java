@@ -82,6 +82,7 @@ public class QuorumPeerMain {
      * @param args path to the configfile
      */
     public static void main(String[] args) {
+        args=new String[]{"./conf/zoo_sample.cfg"};
         QuorumPeerMain main = new QuorumPeerMain();
         try {
             main.initializeAndRun(args);
@@ -112,14 +113,14 @@ public class QuorumPeerMain {
 
     protected void initializeAndRun(String[] args)
             throws ConfigException, IOException, AdminServerException {
-        //解析配置文件
+        //1.解析配置文件
         QuorumPeerConfig config = new QuorumPeerConfig();
         if (args.length == 1) {
             config.parse(args[0]);
         }
 
         // Start and schedule the the purge task
-        //创建并启动历史文件清理器(对事务日志和快照数据文件进行定时清理)
+        //2.创建并启动历史文件清理器(对事务日志和快照数据文件进行定时清理)
         DatadirCleanupManager purgeMgr = new DatadirCleanupManager(config
                 .getDataDir(), config.getDataLogDir(), config
                 .getSnapRetainCount(), config.getPurgeInterval());

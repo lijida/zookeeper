@@ -95,17 +95,32 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
      */
     private ZKDatabase zkDb;
 
+    /**
+     * 对集群中一个服务器主要属性的记录
+     */
     public static class QuorumServer {
         public InetSocketAddress addr = null;
 
+        /**
+         * 选举之前，各server参与选举的port
+         */
         public InetSocketAddress electionAddr = null;
 
+        /**
+         *
+         */
         public InetSocketAddress clientAddr = null;
 
+        /**
+         * 机器的serverId
+         */
         public long id;
 
         public String hostname;
 
+        /**
+         * server类型，为PARTICIPANT 或者 OBSERVER;
+         */
         public LearnerType type = LearnerType.PARTICIPANT;
 
         private List<InetSocketAddress> myAddrs;
@@ -272,6 +287,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             }
         }
 
+        @Override
         public String toString() {
             StringWriter sw = new StringWriter();
             //addr should never be null, but just to make sure
@@ -295,6 +311,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             return sw.toString();
         }
 
+        @Override
         public int hashCode() {
             assert false : "hashCode not designed";
             return 42; // any arbitrary constant will do
@@ -307,6 +324,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             return true;
         }
 
+        @Override
         public boolean equals(Object o) {
             if (!(o instanceof QuorumServer)) return false;
             QuorumServer qs = (QuorumServer) o;
@@ -364,11 +382,16 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         /**
          * 寻找Leader状态
          */
-        LOOKING, /**
+        LOOKING,
+        /**
          * 当前服务器角色是Follower
-         */FOLLOWING, /**
+         */
+        FOLLOWING,
+        /**
          * 当前服务器角色是Leader
-         */LEADING, /**
+         */
+        LEADING,
+        /**
          * 当前服务器角色死Observer
          */OBSERVING;
     }
@@ -393,7 +416,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
 
     static final long OBSERVER_ID = Long.MAX_VALUE;
 
-    /*
+    /**
      * Record leader election time
      */
     public long start_fle, end_fle; // fle = fast leader election
@@ -448,6 +471,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     /**
      * get the id of this quorum peer.
      */
+    @Override
     public long getId() {
         return myid;
     }
@@ -1059,12 +1083,13 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     }
 
     synchronized public ZooKeeperServer getActiveServer() {
-        if (leader != null)
+        if (leader != null) {
             return leader.zk;
-        else if (follower != null)
+        } else if (follower != null) {
             return follower.zk;
-        else if (observer != null)
+        } else if (observer != null) {
             return observer.zk;
+        }
         return null;
     }
 
@@ -1126,6 +1151,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
                             // changes in each of election strategy classes which is
                             // unnecessary code coupling.
                             Thread roZkMgr = new Thread() {
+                                @Override
                                 public void run() {
                                     try {
                                         // lower-bound grace period to 2 secs
@@ -1309,7 +1335,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     }
 
     public synchronized Set<Long> getCurrentAndNextConfigVoters() {
-        Set<Long> voterIds = new HashSet<Long>(getQuorumVerifier()
+        Set<Long> voterIds = new HashSet<>(getQuorumVerifier()
                 .getVotingMembers().keySet());
         if (getLastSeenQuorumVerifier() != null) {
             voterIds.addAll(getLastSeenQuorumVerifier().getVotingMembers()

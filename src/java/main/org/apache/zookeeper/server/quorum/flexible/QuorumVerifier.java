@@ -27,8 +27,11 @@ import java.util.Set;
  * All quorum validators have to implement a method called
  * containsQuorum, which verifies if a HashSet of server
  * identifiers constitutes a quorum.
+ * <p>
+ * 该接口的所有实现必须实现{@link #containsQuorum(Set)},此方法判断一个服务器集合是否可以组成quorum
+ * <p>
+ * QuorumVerifier作为集群验证器，主要完成判断一组server在已给定的配置的server列表中，是否能够构成集群
  */
-
 public interface QuorumVerifier {
     long getWeight(long id);
 

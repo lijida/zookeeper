@@ -135,7 +135,7 @@ public class QuorumCnxManager {
      * 消息接收队列,用于存放那些从其他服务器接收到的消息
      */
     public final ArrayBlockingQueue<Message> recvQueue;
-    /*
+    /**
      * Object to synchronize access to recvQueue
      */
     private final Object recvQLock = new Object();
@@ -172,7 +172,7 @@ public class QuorumCnxManager {
         long sid;
     }
 
-    /*
+    /**
      * This class parses the initial identification sent out by peers with their
      * sid & hostname.
      */
@@ -294,10 +294,9 @@ public class QuorumCnxManager {
 
             @Override
             public Thread newThread(Runnable r) {
-                Thread t = new Thread(group, r, "QuorumConnectionThread-"
+                return new Thread(group, r, "QuorumConnectionThread-"
                         + "[myid=" + mySid + "]-"
                         + threadIndex.getAndIncrement());
-                return t;
             }
         };
         this.connectionExecutor = new ThreadPoolExecutor(3,

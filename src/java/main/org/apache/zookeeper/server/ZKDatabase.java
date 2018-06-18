@@ -648,8 +648,15 @@ public class ZKDatabase {
         this.snapLog.close();
     }
 
+    /**
+     * 设置"/zookeeper/config"的数据
+     *
+     * @param qv 包含集群中所有节点信息,用于验证一个节点集合是否构成quorum
+     */
     public synchronized void initConfigInZKDatabase(QuorumVerifier qv) {
-        if (qv == null) return; // only happens during tests
+        if (qv == null) {
+            return; // only happens during tests
+        }
         try {
             if (this.dataTree.getNode(ZooDefs.CONFIG_NODE) == null) {
                 // should only happen during upgrade

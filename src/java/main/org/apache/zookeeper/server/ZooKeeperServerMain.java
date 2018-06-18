@@ -105,6 +105,28 @@ public class ZooKeeperServerMain {
     }
 
     /**
+     * Shutdown the serving instance
+     */
+    protected void shutdown() {
+        if (containerManager != null) {
+            containerManager.stop();
+        }
+        if (cnxnFactory != null) {
+            cnxnFactory.shutdown();
+        }
+        if (secureCnxnFactory != null) {
+            secureCnxnFactory.shutdown();
+        }
+        try {
+            if (adminServer != null) {
+                adminServer.shutdown();
+            }
+        } catch (AdminServerException e) {
+            LOG.warn("Problem stopping AdminServer", e);
+        }
+    }
+
+    /**
      * Run from a ServerConfig.
      *
      * @param config ServerConfig to use.
@@ -120,39 +142,41 @@ public class ZooKeeperServerMain {
             // so rather than spawning another thread, we will just call
             // run() in this thread.
             // create a file logger url from the command line args
-            //创建ZooKeeper数据管理器
+            //3.创建ZooKeeper数据管理器
             txnLog = new FileTxnSnapLog(config.dataLogDir, config.dataDir);
             final ZooKeeperServer zkServer = new ZooKeeperServer(txnLog,
                     config.tickTime, config.minSessionTimeout, config.maxSessionTimeout, null);
             txnLog.setServerStats(zkServer.serverStats());
 
-            // Registers shutdown handler which will be used to know the
-            // server error or shutdown state changes.
+            // Registers shutdown handler which will be used to know the server error or shutdown state changes.
+            //4.注册shutdownHandler,在ZooKeeperServer的状态变化时调用shutdownHandler的handle()
             final CountDownLatch shutdownLatch = new CountDownLatch(1);
             zkServer.registerServerShutdownHandler(
                     new ZooKeeperServerShutdownHandler(shutdownLatch));
 
-            // Start Admin server
+            ////5.启动Admin server
             adminServer = AdminServerFactory.createAdminServer();
             adminServer.setZooKeeperServer(zkServer);
             adminServer.start();
 
+            //6.创建并启动网络IO管理器
             boolean needStartZKServer = true;
             if (config.getClientPortAddress() != null) {
                 //创建ServerCnxnFactory
                 cnxnFactory = ServerCnxnFactory.createFactory();
                 cnxnFactory.configure(config.getClientPortAddress(), config.getMaxClientCnxns(), false);
-                //启动ServerCnxnFactory线程
+                //7.此方法会同时启动ZooKeeper
                 cnxnFactory.startup(zkServer);
                 // zkServer has been started. So we don't need to start it again in secureCnxnFactory.
                 needStartZKServer = false;
             }
+            //8.创建并启动secureCnxnFactory
             if (config.getSecureClientPortAddress() != null) {
                 secureCnxnFactory = ServerCnxnFactory.createFactory();
                 secureCnxnFactory.configure(config.getSecureClientPortAddress(), config.getMaxClientCnxns(), true);
                 secureCnxnFactory.startup(zkServer, needStartZKServer);
             }
-
+            //9. 创建并启动ContainerManager
             containerManager = new ContainerManager(zkServer.getZKDatabase(), zkServer.firstProcessor,
                     Integer.getInteger("znode.container.checkIntervalMs", (int) TimeUnit.MINUTES.toMillis(1)),
                     Integer.getInteger("znode.container.maxPerMinute", 10000)
@@ -182,28 +206,6 @@ public class ZooKeeperServerMain {
             if (txnLog != null) {
                 txnLog.close();
             }
-        }
-    }
-
-    /**
-     * Shutdown the serving instance
-     */
-    protected void shutdown() {
-        if (containerManager != null) {
-            containerManager.stop();
-        }
-        if (cnxnFactory != null) {
-            cnxnFactory.shutdown();
-        }
-        if (secureCnxnFactory != null) {
-            secureCnxnFactory.shutdown();
-        }
-        try {
-            if (adminServer != null) {
-                adminServer.shutdown();
-            }
-        } catch (AdminServerException e) {
-            LOG.warn("Problem stopping AdminServer", e);
         }
     }
 
