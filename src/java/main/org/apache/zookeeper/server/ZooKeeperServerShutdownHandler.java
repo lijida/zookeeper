@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,9 +17,9 @@
  */
 package org.apache.zookeeper.server;
 
-import java.util.concurrent.CountDownLatch;
-
 import org.apache.zookeeper.server.ZooKeeperServer.State;
+
+import java.util.concurrent.CountDownLatch;
 
 /**
  * ZooKeeper server shutdown handler which will be used to handle ERROR or
@@ -34,6 +34,7 @@ class ZooKeeperServerShutdownHandler {
     }
 
     /**
+     * 在{@link ZooKeeperServer#setState(State)}中被调用
      * This will be invoked when the server transition to a new server state.
      *
      * @param state new server state

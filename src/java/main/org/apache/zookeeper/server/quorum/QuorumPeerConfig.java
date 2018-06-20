@@ -168,26 +168,19 @@ public class QuorumPeerConfig {
                     .build()).create(path);
 
             Properties cfg = new Properties();
-            FileInputStream in = new FileInputStream(configFile);
-            try {
+            try (FileInputStream in = new FileInputStream(configFile)) {
                 cfg.load(in);
                 configFileStr = path;
-            } finally {
-                in.close();
             }
-
             parseProperties(cfg);
-        } catch (IOException e) {
-            throw new ConfigException("Error processing " + path, e);
-        } catch (IllegalArgumentException e) {
+        } catch (IOException | IllegalArgumentException e) {
             throw new ConfigException("Error processing " + path, e);
         }
 
         if (dynamicConfigFileStr != null) {
             try {
                 Properties dynamicCfg = new Properties();
-                FileInputStream inConfig = new FileInputStream(dynamicConfigFileStr);
-                try {
+                try (FileInputStream inConfig = new FileInputStream(dynamicConfigFileStr)) {
                     dynamicCfg.load(inConfig);
                     if (dynamicCfg.getProperty("version") != null) {
                         throw new ConfigException("dynamic file shouldn't have version inside");
@@ -199,25 +192,18 @@ public class QuorumPeerConfig {
                     if (version != null) {
                         dynamicCfg.setProperty("version", version);
                     }
-                } finally {
-                    inConfig.close();
                 }
                 setupQuorumPeerConfig(dynamicCfg, false);
 
-            } catch (IOException e) {
-                throw new ConfigException("Error processing " + dynamicConfigFileStr, e);
-            } catch (IllegalArgumentException e) {
+            } catch (IOException | IllegalArgumentException e) {
                 throw new ConfigException("Error processing " + dynamicConfigFileStr, e);
             }
             File nextDynamicConfigFile = new File(configFileStr + nextDynamicConfigFileSuffix);
             if (nextDynamicConfigFile.exists()) {
                 try {
                     Properties dynamicConfigNextCfg = new Properties();
-                    FileInputStream inConfigNext = new FileInputStream(nextDynamicConfigFile);
-                    try {
+                    try (FileInputStream inConfigNext = new FileInputStream(nextDynamicConfigFile)) {
                         dynamicConfigNextCfg.load(inConfigNext);
-                    } finally {
-                        inConfigNext.close();
                     }
                     boolean isHierarchical = false;
                     for (Entry<Object, Object> entry : dynamicConfigNextCfg.entrySet()) {
@@ -242,8 +228,9 @@ public class QuorumPeerConfig {
     // e.g. "zoo.cfg.dynamic", it returns null.
     public static String getVersionFromFilename(String filename) {
         int i = filename.lastIndexOf('.');
-        if (i < 0 || i >= filename.length())
+        if (i < 0 || i >= filename.length()) {
             return null;
+        }
 
         String hexVersion = filename.substring(i + 1);
         try {
@@ -283,72 +270,81 @@ public class QuorumPeerConfig {
         for (Entry<Object, Object> entry : zkProp.entrySet()) {
             String key = entry.getKey().toString().trim();
             String value = entry.getValue().toString().trim();
-            if (key.equals("dataDir")) {
+            if ("dataDir".equals(key)) {
                 dataDir = vff.create(value);
-            } else if (key.equals("dataLogDir")) {
+            } else if ("dataLogDir".equals(key)) {
                 dataLogDir = vff.create(value);
-            } else if (key.equals("clientPort")) {
+            } else if ("clientPort".equals(key)) {
                 clientPort = Integer.parseInt(value);
-            } else if (key.equals("localSessionsEnabled")) {
+            } else if ("localSessionsEnabled".equals(key)) {
                 localSessionsEnabled = Boolean.parseBoolean(value);
-            } else if (key.equals("localSessionsUpgradingEnabled")) {
+            } else if ("localSessionsUpgradingEnabled".equals(key)) {
                 localSessionsUpgradingEnabled = Boolean.parseBoolean(value);
-            } else if (key.equals("clientPortAddress")) {
+            } else if ("clientPortAddress".equals(key)) {
                 clientPortAddress = value.trim();
-            } else if (key.equals("secureClientPort")) {
+            } else if ("secureClientPort".equals(key)) {
                 secureClientPort = Integer.parseInt(value);
-            } else if (key.equals("secureClientPortAddress")) {
+            } else if ("secureClientPortAddress".equals(key)) {
                 secureClientPortAddress = value.trim();
-            } else if (key.equals("tickTime")) {
+            } else if ("tickTime".equals(key)) {
                 tickTime = Integer.parseInt(value);
-            } else if (key.equals("maxClientCnxns")) {
+            } else if ("maxClientCnxns".equals(key)) {
                 maxClientCnxns = Integer.parseInt(value);
-            } else if (key.equals("minSessionTimeout")) {
+            } else if ("minSessionTimeout".equals(key)) {
                 minSessionTimeout = Integer.parseInt(value);
-            } else if (key.equals("maxSessionTimeout")) {
+            } else if ("maxSessionTimeout".equals(key)) {
                 maxSessionTimeout = Integer.parseInt(value);
-            } else if (key.equals("initLimit")) {
+            } else if ("initLimit".equals(key)) {
                 initLimit = Integer.parseInt(value);
-            } else if (key.equals("syncLimit")) {
+            } else if ("syncLimit".equals(key)) {
                 syncLimit = Integer.parseInt(value);
-            } else if (key.equals("electionAlg")) {
+            } else if ("electionAlg".equals(key)) {
                 electionAlg = Integer.parseInt(value);
                 if (electionAlg != 1 && electionAlg != 2 && electionAlg != 3) {
                     throw new ConfigException("Invalid electionAlg value. Only 1, 2, 3 are supported.");
                 }
-            } else if (key.equals("quorumListenOnAllIPs")) {
+            } else if ("quorumListenOnAllIPs".equals(key)) {
                 quorumListenOnAllIPs = Boolean.parseBoolean(value);
-            } else if (key.equals("peerType")) {
-                if (value.toLowerCase().equals("observer")) {
-                    peerType = LearnerType.OBSERVER;
-                } else if (value.toLowerCase().equals("participant")) {
-                    peerType = LearnerType.PARTICIPANT;
-                } else {
-                    throw new ConfigException("Unrecognised peertype: " + value);
+            } else if ("peerType".equals(key)) {
+                switch (value.toLowerCase()) {
+                    case "observer":
+                        peerType = LearnerType.OBSERVER;
+                        break;
+                    case "participant":
+                        peerType = LearnerType.PARTICIPANT;
+                        break;
+                    default:
+                        throw new ConfigException("Unrecognised peertype: " + value);
                 }
-            } else if (key.equals("syncEnabled")) {
+            } else if ("syncEnabled".equals(key)) {
                 syncEnabled = Boolean.parseBoolean(value);
-            } else if (key.equals("dynamicConfigFile")) {
+            } else if ("dynamicConfigFile".equals(key)) {
                 dynamicConfigFileStr = value;
-            } else if (key.equals("autopurge.snapRetainCount")) {
+            } else if ("autopurge.snapRetainCount".equals(key)) {
                 snapRetainCount = Integer.parseInt(value);
-            } else if (key.equals("autopurge.purgeInterval")) {
+            } else if ("autopurge.purgeInterval".equals(key)) {
                 purgeInterval = Integer.parseInt(value);
-            } else if (key.equals("standaloneEnabled")) {
-                if (value.toLowerCase().equals("true")) {
-                    setStandaloneEnabled(true);
-                } else if (value.toLowerCase().equals("false")) {
-                    setStandaloneEnabled(false);
-                } else {
-                    throw new ConfigException("Invalid option " + value + " for standalone mode. Choose 'true' or 'false.'");
+            } else if ("standaloneEnabled".equals(key)) {
+                switch (value.toLowerCase()) {
+                    case "true":
+                        setStandaloneEnabled(true);
+                        break;
+                    case "false":
+                        setStandaloneEnabled(false);
+                        break;
+                    default:
+                        throw new ConfigException("Invalid option " + value + " for standalone mode. Choose 'true' or 'false.'");
                 }
-            } else if (key.equals("reconfigEnabled")) {
-                if (value.toLowerCase().equals("true")) {
-                    setReconfigEnabled(true);
-                } else if (value.toLowerCase().equals("false")) {
-                    setReconfigEnabled(false);
-                } else {
-                    throw new ConfigException("Invalid option " + value + " for reconfigEnabled flag. Choose 'true' or 'false.'");
+            } else if ("reconfigEnabled".equals(key)) {
+                switch (value.toLowerCase()) {
+                    case "true":
+                        setReconfigEnabled(true);
+                        break;
+                    case "false":
+                        setReconfigEnabled(false);
+                        break;
+                    default:
+                        throw new ConfigException("Invalid option " + value + " for reconfigEnabled flag. Choose 'true' or 'false.'");
                 }
             } else if ((key.startsWith("server.") || key.startsWith("group") || key.startsWith("weight")) && zkProp.containsKey("dynamicConfigFile")) {
                 throw new ConfigException("parameter: " + key + " must be in a separate dynamic config file");
@@ -364,7 +360,7 @@ public class QuorumPeerConfig {
                 quorumServerLoginContext = value;
             } else if (key.equals(QuorumAuth.QUORUM_KERBEROS_SERVICE_PRINCIPAL)) {
                 quorumServicePrincipal = value;
-            } else if (key.equals("quorum.cnxn.threads.size")) {
+            } else if ("quorum.cnxn.threads.size".equals(key)) {
                 quorumCnxnThreadsSize = Integer.parseInt(value);
             } else {
                 System.setProperty("zookeeper." + key, value);
@@ -708,12 +704,9 @@ public class QuorumPeerConfig {
         if (!myIdFile.isFile()) {
             return;
         }
-        BufferedReader br = new BufferedReader(new FileReader(myIdFile));
         String myIdString;
-        try {
+        try (BufferedReader br = new BufferedReader(new FileReader(myIdFile))) {
             myIdString = br.readLine();
-        } finally {
-            br.close();
         }
         try {
             serverId = Long.parseLong(myIdString);

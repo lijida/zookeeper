@@ -134,13 +134,13 @@ public class DataTree {
      * This set contains the paths of all container nodes
      */
     private final Set<String> containers =
-            Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     /**
      * This set contains the paths of all ttl nodes
      */
     private final Set<String> ttls =
-            Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     private final ReferenceCountedACLCache aclCache = new ReferenceCountedACLCache();
 
@@ -158,11 +158,11 @@ public class DataTree {
     }
 
     public Set<String> getContainers() {
-        return new HashSet<String>(containers);
+        return new HashSet<>(containers);
     }
 
     public Set<String> getTtls() {
-        return new HashSet<String>(ttls);
+        return new HashSet<>(ttls);
     }
 
     public Collection<Long> getSessions() {

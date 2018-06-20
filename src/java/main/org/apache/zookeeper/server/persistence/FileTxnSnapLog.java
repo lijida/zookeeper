@@ -195,10 +195,10 @@ public class FileTxnSnapLog {
     }
 
     /**
-     * get the snap dir used by this
-     * filetxn snap log
+     * get the snap dir used by this filetxn snap log
      *
      * @return the snap dir
+     *
      */
     public File getSnapDir() {
         return this.snapDir;
@@ -299,8 +299,9 @@ public class FileTxnSnapLog {
                             hdr.getType() + " error: " + e.getMessage(), e);
                 }
                 listener.onTxnLoaded(hdr, itr.getTxn());
-                if (!itr.next())
+                if (!itr.next()) {
                     break;
+                }
             }
         } finally {
             if (itr != null) {

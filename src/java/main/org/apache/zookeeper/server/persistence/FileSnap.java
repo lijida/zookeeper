@@ -210,9 +210,10 @@ public class FileSnap implements SnapShot {
                              OutputArchive oa, FileHeader header) throws IOException {
         // this is really a programmatic error and not something that can
         // happen at runtime
-        if (header == null)
+        if (header == null) {
             throw new IllegalStateException(
                     "Snapshot's not open for writing: uninitialized header");
+        }
         header.serialize(oa, "fileheader");
         SerializeUtils.serializeSnapshot(dt, oa, sessions);
     }
@@ -225,6 +226,7 @@ public class FileSnap implements SnapShot {
      * @param snapShot the file to store snapshot into
      * @param fsync    sync the file immediately after write
      */
+    @Override
     public synchronized void serialize(DataTree dt, Map<Long, Integer> sessions, File snapShot, boolean fsync)
             throws IOException {
         if (!close) {

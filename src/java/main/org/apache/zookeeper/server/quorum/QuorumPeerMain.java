@@ -82,7 +82,7 @@ public class QuorumPeerMain {
      * @param args path to the configfile
      */
     public static void main(String[] args) {
-        args=new String[]{"./conf/zoo_sample.cfg"};
+        args=new String[]{"./conf/zoo.cfg"};
         QuorumPeerMain main = new QuorumPeerMain();
         try {
             main.initializeAndRun(args);

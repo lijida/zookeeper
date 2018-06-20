@@ -40,18 +40,24 @@ public class ContainerManager {
     private static final Logger LOG = LoggerFactory.getLogger(ContainerManager.class);
     private final ZKDatabase zkDb;
     private final RequestProcessor requestProcessor;
+    /**
+     * 执行两次检查任务之间的时间间隔,默认:60_000(单位:ms),即1min
+     */
     private final int checkIntervalMs;
+    /**
+     * 一分钟内最多删除多少个容器节点,默认:10000
+     */
     private final int maxPerMinute;
     private final Timer timer;
     private final AtomicReference<TimerTask> task = new AtomicReference<TimerTask>(null);
 
     /**
-     * @param zkDb the ZK database
+     * @param zkDb             the ZK database
      * @param requestProcessor request processer - used to inject delete
      *                         container requests
-     * @param checkIntervalMs how often to check containers in milliseconds
-     * @param maxPerMinute the max containers to delete per second - avoids
-     *                     herding of container deletions
+     * @param checkIntervalMs  how often to check containers in milliseconds
+     * @param maxPerMinute     the max containers to delete per second - avoids
+     *                         herding of container deletions
      */
     public ContainerManager(ZKDatabase zkDb, RequestProcessor requestProcessor,
                             int checkIntervalMs, int maxPerMinute) {
@@ -80,7 +86,7 @@ public class ContainerManager {
                         Thread.currentThread().interrupt();
                         LOG.info("interrupted");
                         cancel();
-                    } catch ( Throwable e ) {
+                    } catch (Throwable e) {
                         LOG.error("Error checking containers", e);
                     }
                 }
@@ -108,7 +114,9 @@ public class ContainerManager {
      */
     public void checkContainers()
             throws InterruptedException {
+        //删除两个容器节点之间的最小间隔,默认:6ms
         long minIntervalMs = getMinIntervalMs();
+        //遍历待删除的容器节点(同时会删除过期的TTL节点)
         for (String containerPath : getCandidates()) {
             long startMs = Time.currentElapsedTime();
 
@@ -118,14 +126,17 @@ public class ContainerManager {
             try {
                 LOG.info("Attempting to delete candidate container: {}",
                         containerPath);
+                //只是将删除节点的请求发送给PrepRequestProcessor,并未真正删除该节点
                 requestProcessor.processRequest(request);
             } catch (Exception e) {
                 LOG.error("Could not delete container: {}",
                         containerPath, e);
             }
-
+            //删除一个容器节点所需时间
             long elapsedMs = Time.currentElapsedTime() - startMs;
             long waitMs = minIntervalMs - elapsedMs;
+            //若删除一个容器节点所需时间小于minIntervalMs,线程sleep.
+            // 由于Timer内部只有一个线程,因此可以保证删除两个容器节点之间的时间间隔至少是minIntervalMs
             if (waitMs > 0) {
                 Thread.sleep(waitMs);
             }
@@ -139,7 +150,7 @@ public class ContainerManager {
 
     // VisibleForTesting
     protected Collection<String> getCandidates() {
-        Set<String> candidates = new HashSet<String>();
+        Set<String> candidates = new HashSet<>();
         for (String containerPath : zkDb.getDataTree().getContainers()) {
             DataNode node = zkDb.getDataTree().getNode(containerPath);
             /*
@@ -147,6 +158,7 @@ public class ContainerManager {
                 before any children have been added. If you were to create the
                 container just before a container cleaning period the container
                 would be immediately be deleted.
+                cversion>0:确保container创建后有过至少一个子节点才删除
              */
             if ((node != null) && (node.stat.getCversion() > 0) &&
                     (node.getChildren().isEmpty())) {
@@ -158,7 +170,7 @@ public class ContainerManager {
             if (node != null) {
                 Set<String> children = node.getChildren();
                 if (children.isEmpty()) {
-                    if ( EphemeralType.get(node.stat.getEphemeralOwner()) == EphemeralType.TTL ) {
+                    if (EphemeralType.get(node.stat.getEphemeralOwner()) == EphemeralType.TTL) {
                         long elapsed = getElapsed(node);
                         long ttl = EphemeralType.TTL.getValue(node.stat.getEphemeralOwner());
                         if ((ttl != 0) && (getElapsed(node) > ttl)) {

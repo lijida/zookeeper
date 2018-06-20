@@ -46,6 +46,8 @@ logs/
 *.log
 *.bak
 *.tmp
+!tmp
+!tmp/myid
 tmp/**
 tmp/**/*
 .DS_Store

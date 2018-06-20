@@ -31,8 +31,10 @@ import org.slf4j.LoggerFactory;
 
 import javax.management.JMException;
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * This class starts and runs a standalone ZooKeeperServer.
