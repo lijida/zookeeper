@@ -198,16 +198,13 @@ public class FileTxnSnapLog {
      * get the snap dir used by this filetxn snap log
      *
      * @return the snap dir
-     *
      */
     public File getSnapDir() {
         return this.snapDir;
     }
 
     /**
-     * this function restores the server
-     * database after reading from the
-     * snapshots and transaction logs
+     * this function restores the server database after reading from the snapshots and transaction logs
      *
      * @param dt       the datatree to be restored
      * @param sessions the sessions to be restored
@@ -277,9 +274,8 @@ public class FileTxnSnapLog {
         long highestZxid = dt.lastProcessedZxid;
         TxnHeader hdr;
         try {
-            while (true) {
-                // iterator points to
-                // the first valid txn when initialized
+            do {
+                // iterator points to the first valid txn when initialized
                 hdr = itr.getHeader();
                 if (hdr == null) {
                     //empty logs
@@ -299,10 +295,7 @@ public class FileTxnSnapLog {
                             hdr.getType() + " error: " + e.getMessage(), e);
                 }
                 listener.onTxnLoaded(hdr, itr.getTxn());
-                if (!itr.next()) {
-                    break;
-                }
-            }
+            } while (itr.next());
         } finally {
             if (itr != null) {
                 itr.close();
@@ -464,6 +457,8 @@ public class FileTxnSnapLog {
     }
 
     /**
+     * 获取n个最近的快照文件
+     * <p>
      * the n most recent snapshots
      *
      * @param n the number of recent snapshots

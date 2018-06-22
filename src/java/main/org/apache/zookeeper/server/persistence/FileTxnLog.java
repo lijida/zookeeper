@@ -79,15 +79,25 @@ import java.util.zip.Checksum;
 public class FileTxnLog implements TxnLog {
     private static final Logger LOG;
 
+    /**
+     * 魔数
+     */
     public final static int TXNLOG_MAGIC =
             ByteBuffer.wrap("ZKLG".getBytes()).getInt();
 
+    /**
+     * 版本号
+     */
     public final static int VERSION = 2;
 
+    /**
+     * 事务日志文件名前缀
+     */
     public static final String LOG_FILE_PREFIX = "log";
 
     /**
      * Maximum time we allow for elapsed fsync before WARNing
+     * 默认:1000,单位:ms
      */
     private final static long fsyncWarningThresholdMS;
 
@@ -96,27 +106,49 @@ public class FileTxnLog implements TxnLog {
 
         /** Local variable to read fsync.warningthresholdms into */
         Long fsyncWarningThreshold;
-        if ((fsyncWarningThreshold = Long.getLong("zookeeper.fsync.warningthresholdms")) == null)
+        if ((fsyncWarningThreshold = Long.getLong("zookeeper.fsync.warningthresholdms")) == null) {
             fsyncWarningThreshold = Long.getLong("fsync.warningthresholdms", 1000);
+        }
         fsyncWarningThresholdMS = fsyncWarningThreshold;
     }
 
     long lastZxidSeen;
+    /**
+     * 当前事务日志文件输出流(是Buffered),底层是{@link #fos}
+     */
     volatile BufferedOutputStream logStream = null;
     volatile OutputArchive oa;
+    /**
+     * 当前事务日志文件输出流,是{@link #logStream}的底层OutputStream
+     */
     volatile FileOutputStream fos = null;
 
+    /**
+     * 事务日志文件目录
+     */
     File logDir;
+    /**
+     * 是否强制同步,默认:true
+     */
     private final boolean forceSync = !System.getProperty("zookeeper.forceSync", "yes").equals("no");
+    /**
+     * 数据库id
+     */
     long dbId;
     /**
      * 当前需要强制进行数据落盘的文件流
      */
     private LinkedList<FileOutputStream> streamsToFlush =
-            new LinkedList<FileOutputStream>();
+            new LinkedList<>();
+    /**
+     * 当前写入事务日志的文件
+     */
     File logFileWrite = null;
     private FilePadding filePadding = new FilePadding();
 
+    /**
+     * 关联的服务器统计信息.强制刷新磁盘时,若使用时间超过{@link #fsyncWarningThresholdMS},则进行记录
+     */
     private ServerStats serverStats;
 
     private volatile long syncElapsedMS = -1L;
@@ -229,6 +261,7 @@ public class FileTxnLog implements TxnLog {
             fhdr.serialize(oa, "fileheader");
             // Make sure that the magic number is written before padding.
             logStream.flush();
+            //返回已写入文件的大小
             filePadding.setCurrentSize(fos.getChannel().position());
             streamsToFlush.add(fos);
         }
@@ -245,7 +278,6 @@ public class FileTxnLog implements TxnLog {
         oa.writeLong(crc.getValue(), "txnEntryCRC");
         //写入事务日志文件流
         Util.writeTxnBytes(oa, buf);
-
         return true;
     }
 
@@ -274,7 +306,7 @@ public class FileTxnLog implements TxnLog {
                 logZxid = fzxid;
             }
         }
-        List<File> v = new ArrayList<File>(5);
+        List<File> v = new ArrayList<>(5);
         for (File f : files) {
             long fzxid = Util.getZxidFromName(f.getName(), LOG_FILE_PREFIX);
             if (fzxid < logZxid) {
@@ -291,6 +323,7 @@ public class FileTxnLog implements TxnLog {
      *
      * @return the last zxid logged in the transaction logs
      */
+    @Override
     public long getLastLoggedZxid() {
         File[] files = getLogFiles(logDir.listFiles(), 0);
         long maxLog = files.length > 0 ?
@@ -329,8 +362,7 @@ public class FileTxnLog implements TxnLog {
 
     /**
      * 由于{@link #logStream}是{@link BufferedOutputStream},因此调用{@link #append(TxnHeader, Record)}后数据并未真正写入磁盘中,调用该方法,将数据强制写入磁盘
-     * commit the logs. make sure that everything hits the
-     * disk
+     * commit the logs. make sure that everything hits the disk
      */
     @Override
     public synchronized void commit() throws IOException {
@@ -338,6 +370,7 @@ public class FileTxnLog implements TxnLog {
             logStream.flush();
         }
         for (FileOutputStream log : streamsToFlush) {
+            //调用此方法将FileOutputStream写入的字节刷新到操作系统,若存在操作系统级别的缓存,此时尚未写入磁盘
             log.flush();
             if (forceSync) {
                 long startSyncNS = System.nanoTime();
@@ -359,6 +392,7 @@ public class FileTxnLog implements TxnLog {
                 }
             }
         }
+        //只保留一个待刷新的FileOutputStream
         while (streamsToFlush.size() > 1) {
             streamsToFlush.removeFirst().close();
         }
@@ -367,6 +401,7 @@ public class FileTxnLog implements TxnLog {
     /**
      * @return elapsed sync time of transaction log in milliseconds
      */
+    @Override
     public long getTxnLogSyncElapsedTime() {
         return syncElapsedMS;
     }
@@ -374,7 +409,7 @@ public class FileTxnLog implements TxnLog {
     /**
      * start reading all the transactions from the given zxid
      *
-     * @param zxid the zxid to start reading transactions from
+     * @param zxid the zxid to start reading transactions from(inclusive)
      * @return returns an iterator to iterate through the transaction
      * logs
      */
@@ -460,6 +495,7 @@ public class FileTxnLog implements TxnLog {
      *
      * @return the dbid of this database
      */
+    @Override
     public long getDbId() throws IOException {
         FileTxnIterator itr = new FileTxnIterator(logDir, 0);
         FileHeader fh = readHeader(itr.logFile);
@@ -479,13 +515,15 @@ public class FileTxnLog implements TxnLog {
     }
 
     /**
-     * a class that keeps track of the position
-     * in the input stream. The position points to offset
-     * that has been consumed by the applications. It can
-     * wrap buffered input streams to provide the right offset
+     * a class that keeps track of the position in the input stream.
+     * The position points to offset that has been consumed by the applications.
+     * It can wrap buffered input streams to provide the right offset
      * for the application.
      */
     static class PositionInputStream extends FilterInputStream {
+        /**
+         * 指向应用程序已消耗的偏移量
+         */
         long position;
 
         protected PositionInputStream(InputStream in) {
@@ -502,6 +540,7 @@ public class FileTxnLog implements TxnLog {
             return rc;
         }
 
+        @Override
         public int read(byte[] b) throws IOException {
             int rc = super.read(b);
             if (rc > 0) {
@@ -553,25 +592,42 @@ public class FileTxnLog implements TxnLog {
      * which is used for reading the transaction logs
      */
     public static class FileTxnIterator implements TxnLog.TxnIterator {
+        /**
+         * 事务日志目录,一般为"dataLogDir/version-2"
+         */
         File logDir;
+        /**
+         * 初始化时传入
+         */
         long zxid;
+        /**
+         * 指向当前事务的事务头
+         */
         TxnHeader hdr;
+        /**
+         * 指向当前事务的事务体
+         */
         Record record;
+        /**
+         * 当前读取的事务日志文件
+         */
         File logFile;
         InputArchive ia;
         static final String CRC_ERROR = "CRC check failed";
 
         PositionInputStream inputStream = null;
-        //stored files is the list of files greater than
-        //the zxid we are looking for.
+        /**
+         * stored files is the list of files greater than the zxid we are looking for.
+         */
         private ArrayList<File> storedFiles;
 
         /**
          * create an iterator over a transaction database directory
          *
          * @param logDir      the transaction database directory
-         * @param zxid        the zxid to start reading from
-         * @param fastForward true if the iterator should be fast forwarded to
+         * @param zxid        the zxid to start reading from(inclusive)
+         * @param fastForward 若为true,则根据zxid指向对应的事务日志,否则,指向事务日志文件的开头.
+         *                    true if the iterator should be fast forwarded to
          *                    point to the txn of a given zxid, else the iterator will
          *                    point to the starting txn of a txnlog that may contain txn of
          *                    a given zxid
@@ -585,8 +641,9 @@ public class FileTxnLog implements TxnLog {
 
             if (fastForward && hdr != null) {
                 while (hdr.getZxid() < zxid) {
-                    if (!next())
+                    if (!next()) {
                         break;
+                    }
                 }
             }
         }
@@ -603,13 +660,13 @@ public class FileTxnLog implements TxnLog {
         }
 
         /**
-         * initialize to the zxid specified
+         * initialize to the zxid specified.
          * this is inclusive of the zxid
          *
          * @throws IOException
          */
         void init() throws IOException {
-            storedFiles = new ArrayList<File>();
+            storedFiles = new ArrayList<>();
             List<File> files = Util.sortDataDir(FileTxnLog.getLogFiles(logDir.listFiles(), 0), LOG_FILE_PREFIX, false);
             for (File f : files) {
                 if (Util.getZxidFromName(f.getName(), LOG_FILE_PREFIX) >= zxid) {
@@ -628,6 +685,7 @@ public class FileTxnLog implements TxnLog {
         /**
          * Return total storage size of txnlog that will return by this iterator.
          */
+        @Override
         public long getStorageSize() {
             long sum = 0;
             for (File f : storedFiles) {
@@ -703,6 +761,7 @@ public class FileTxnLog implements TxnLog {
          * @return true if there is more transactions to be read
          * false if not.
          */
+        @Override
         public boolean next() throws IOException {
             if (ia == null) {
                 return false;
@@ -718,8 +777,9 @@ public class FileTxnLog implements TxnLog {
                 // validate CRC
                 Checksum crc = makeChecksumAlgorithm();
                 crc.update(bytes, 0, bytes.length);
-                if (crcValue != crc.getValue())
+                if (crcValue != crc.getValue()) {
                     throw new IOException(CRC_ERROR);
+                }
                 hdr = new TxnHeader();
                 record = SerializeUtils.deserializeTxn(bytes, hdr);
             } catch (EOFException e) {
@@ -748,6 +808,7 @@ public class FileTxnLog implements TxnLog {
          * @return the current header that
          * is read
          */
+        @Override
         public TxnHeader getHeader() {
             return hdr;
         }
@@ -758,6 +819,7 @@ public class FileTxnLog implements TxnLog {
          * @return the current transaction
          * that is read
          */
+        @Override
         public Record getTxn() {
             return record;
         }
@@ -766,6 +828,7 @@ public class FileTxnLog implements TxnLog {
          * close the iterator
          * and release the resources.
          */
+        @Override
         public void close() throws IOException {
             if (inputStream != null) {
                 inputStream.close();

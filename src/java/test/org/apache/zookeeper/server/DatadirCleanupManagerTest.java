@@ -23,6 +23,7 @@ import static org.apache.zookeeper.server.DatadirCleanupManager.PurgeTaskStatus.
 import static org.apache.zookeeper.server.DatadirCleanupManager.PurgeTaskStatus.STARTED;
 
 import java.io.File;
+import java.util.concurrent.TimeUnit;
 
 
 import org.apache.zookeeper.ZKTestCase;
@@ -43,6 +44,7 @@ public class DatadirCleanupManagerTest extends ZKTestCase {
         File dataDir = ClientBase.createTmpDir();
         snapDir = dataDir;
         dataLogDir = dataDir;
+        snapDir=new File("./tmp");
     }
 
     @Test
@@ -56,6 +58,7 @@ public class DatadirCleanupManagerTest extends ZKTestCase {
         Assert.assertEquals("Snapshot retain count is not set as configured",
                 3, purgeMgr.getSnapRetainCount());
         Assert.assertEquals("Purge task is not started", STARTED, purgeMgr.getPurgeTaskStatus());
+        TimeUnit.SECONDS.sleep(100);
         purgeMgr.shutdown();
         Assert.assertEquals("Purge task is still running after shutdown", COMPLETED,
                 purgeMgr.getPurgeTaskStatus());

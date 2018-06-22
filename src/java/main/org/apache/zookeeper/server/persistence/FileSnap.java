@@ -63,6 +63,8 @@ public class FileSnap implements SnapShot {
      * 反序列化快照文件
      * <p>
      * 副作用:修改了{@link DataTree#lastProcessedZxid}
+     * <p>
+     * 若最新的有效的快照文件名为snapShot.n,则[1,n]的所有事务的执行结果都在快照文件中,此时返回n
      *
      * @return the zxid of the snapshot(快照数据保存的最后处理的zxid)
      */
@@ -72,22 +74,26 @@ public class FileSnap implements SnapShot {
         // we run through 100 snapshots (not all of them)
         // if we cannot get it running within 100 snapshots
         // we should  give up
-        //获取至多100个快照文件,但若最新的快照文件通过正确性校验,则只解析最新的文件
+        //获取至多100个快照文件(已按zxid逆序排序,即越新的越在前面)
         List<File> snapList = findNValidSnapshots(100);
         if (snapList.size() == 0) {
             return -1L;
         }
         File snap = null;
         boolean foundValid = false;
-        for (int i = 0, snapListSize = snapList.size(); i < snapListSize; i++) {
-            snap = snapList.get(i);
+        //但若最新的快照文件通过正确性校验,则只解析最新的一个文件;
+        //若100个快照文件都是无效的,则认为无法从快照中恢复数据
+        for (File aSnapList : snapList) {
+            snap = aSnapList;
             LOG.info("Reading snapshot " + snap);
             try (InputStream snapIS = new BufferedInputStream(new FileInputStream(snap));
                  CheckedInputStream crcIn = new CheckedInputStream(snapIS, new Adler32())) {
                 InputArchive ia = BinaryInputArchive.getArchive(crcIn);
+                //反序列化
                 deserialize(dt, sessions, ia);
                 long checkSum = crcIn.getChecksum().getValue();
                 long val = ia.readLong("val");
+                //验证checksum
                 if (val != checkSum) {
                     throw new IOException("CRC corruption in snapshot :  " + snap);
                 }
@@ -152,14 +158,14 @@ public class FileSnap implements SnapShot {
      * @throws IOException
      */
     private List<File> findNValidSnapshots(int n) throws IOException {
+        //获取所有快照文件(已按zxid逆序排序)
         List<File> files = Util.sortDataDir(snapDir.listFiles(), SNAPSHOT_FILE_PREFIX, false);
         int count = 0;
-        List<File> list = new ArrayList<File>();
+        List<File> list = new ArrayList<>();
         for (File f : files) {
-            // we should catch the exceptions
-            // from the valid snapshot and continue
-            // until we find a valid one
+            // we should catch the exceptions  from the valid snapshot and continue until we find a valid one
             try {
+                //获取n个有效的快照文件
                 if (Util.isValidSnapshot(f)) {
                     list.add(f);
                     count++;
@@ -185,10 +191,11 @@ public class FileSnap implements SnapShot {
     public List<File> findNRecentSnapshots(int n) throws IOException {
         List<File> files = Util.sortDataDir(snapDir.listFiles(), SNAPSHOT_FILE_PREFIX, false);
         int count = 0;
-        List<File> list = new ArrayList<File>();
+        List<File> list = new ArrayList<>();
         for (File f : files) {
-            if (count == n)
+            if (count == n) {
                 break;
+            }
             if (Util.getZxidFromName(f.getName(), SNAPSHOT_FILE_PREFIX) != -1) {
                 count++;
                 list.add(f);

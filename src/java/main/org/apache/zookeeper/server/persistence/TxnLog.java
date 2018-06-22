@@ -37,8 +37,7 @@ public interface TxnLog {
     void setServerStats(ServerStats serverStats);
     
     /**
-     * roll the current
-     * log being appended to
+     * roll the current log being appended to
      * @throws IOException 
      */
     void rollLog() throws IOException;

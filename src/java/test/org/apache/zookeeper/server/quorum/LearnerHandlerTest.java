@@ -101,8 +101,9 @@ public class LearnerHandlerTest extends ZKTestCase {
             return lock;
         }
 
+        @Override
         public Iterator<Proposal> getProposalsFromTxnLog(long peerZxid,
-                long limit) {
+                                                         long limit) {
             if (peerZxid >= txnLog.peekFirst().packet.getZxid()) {
                 return txnLog.iterator();
             } else {
@@ -111,6 +112,7 @@ public class LearnerHandlerTest extends ZKTestCase {
 
         }
 
+        @Override
         public long calculateTxnLogSizeLimit() {
             return 1;
         }

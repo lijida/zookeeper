@@ -45,6 +45,7 @@ public class SnapshotFormatter {
      * USAGE: SnapshotFormatter snapshot_file
      */
     public static void main(String[] args) throws Exception {
+        args=new String[]{"tmp/version-2/snapshot.269a"};
         if (args.length != 1) {
             System.err.println("USAGE: SnapshotFormatter snapshot_file");
             System.exit(2);
@@ -62,7 +63,7 @@ public class SnapshotFormatter {
         FileSnap fileSnap = new FileSnap(null);
 
         DataTree dataTree = new DataTree();
-        Map<Long, Integer> sessions = new HashMap<Long, Integer>();
+        Map<Long, Integer> sessions = new HashMap<>();
         
         fileSnap.deserialize(dataTree, sessions, ia);
 

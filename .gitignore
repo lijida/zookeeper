@@ -81,3 +81,5 @@ src/c/depcomp
 src/c/install-sh
 src/c/ltmain.sh
 src/c/missing
+
+build/

@@ -100,8 +100,9 @@ public class MBeanRegistry {
             assert path != null;
         }
         path = makeFullPath(path, parent);
-        if(bean.isHidden())
+        if(bean.isHidden()) {
             return;
+        }
         ObjectName oname = makeObjectName(path, bean);
         try {
             synchronized (LOCK) {
