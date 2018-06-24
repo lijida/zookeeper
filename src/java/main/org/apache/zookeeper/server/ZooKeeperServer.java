@@ -99,6 +99,9 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
      */
     static final private long superSecret = 0XB3415C00L;
 
+    /**
+     * 正在处理中的request
+     */
     private final AtomicInteger requestsInProcess = new AtomicInteger(0);
     /**
      * 待处理的修改
@@ -106,7 +109,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     final Deque<ChangeRecord> outstandingChanges = new ArrayDeque<>();
     // this data structure must be accessed under the outstandingChanges lock
     final Map<String, ChangeRecord> outstandingChangesForPath =
-            new HashMap<String, ChangeRecord>();
+            new HashMap<>();
 
     protected ServerCnxnFactory serverCnxnFactory;
     protected ServerCnxnFactory secureServerCnxnFactory;
@@ -1109,8 +1112,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         RequestHeader h = new RequestHeader();
         h.deserialize(bia, "header");
         // Through the magic of byte buffers, txn will not be
-        // pointing
-        // to the start of the txn
+        // pointing  to the start of the txn
         incomingBuffer = incomingBuffer.slice();
         if (h.getType() == OpCode.auth) {
             LOG.info("got auth packet " + cnxn.getRemoteSocketAddress());

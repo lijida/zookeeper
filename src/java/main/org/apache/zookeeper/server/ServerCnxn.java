@@ -49,57 +49,126 @@ public abstract class ServerCnxn implements Stats, Watcher {
     final public static Object me = new Object();
     private static final Logger LOG = LoggerFactory.getLogger(ServerCnxn.class);
 
+    /**
+     * 认证信息
+     */
     private Set<Id> authInfo = Collections.newSetFromMap(new ConcurrentHashMap<Id, Boolean>());
 
     /**
      * If the client is of old version, we don't send r-o mode info to it.
      * The reason is that if we would, old C client doesn't read it, which
      * results in TCP RST packet, i.e. "connection reset by peer".
+     * <p>
+     * 是否为旧的客户端
      */
     boolean isOldClient = true;
 
+    /**
+     * @return 会话超时时间
+     */
     abstract int getSessionTimeout();
 
+    /**
+     * 关闭连接
+     */
     abstract void close();
 
+    /**
+     * 发送响应
+     *
+     * @param h   响应头
+     * @param r   响应体
+     * @param tag 标记
+     * @throws IOException
+     */
     public abstract void sendResponse(ReplyHeader h, Record r, String tag)
             throws IOException;
 
-    /* notify the client the session is closing and close/cleanup socket */
+    /**
+     * notify the client the session is closing and close/cleanup socket
+     * 关闭会话
+     */
     abstract void sendCloseSession();
 
+    /**
+     * {@link Watcher}接口中的方法
+     *
+     * @param event 事件类型
+     */
     @Override
     public abstract void process(WatchedEvent event);
 
+    /**
+     * @return 会话id
+     */
     public abstract long getSessionId();
 
+    /**
+     * 设置会话id
+     *
+     * @param sessionId 会话id
+     */
     abstract void setSessionId(long sessionId);
 
     /**
      * auth info for the cnxn, returns an unmodifyable list
+     * 获取认证信息，返回不可变的列表
      */
     public List<Id> getAuthInfo() {
         return Collections.unmodifiableList(new ArrayList<>(authInfo));
     }
 
+    /**
+     * 添加认证信息
+     *
+     * @param id 认证信息
+     */
     public void addAuthInfo(Id id) {
         authInfo.add(id);
     }
 
+    /**
+     * 移除认证信息
+     *
+     * @param id 认证信息
+     * @return 是否成功移除
+     */
     public boolean removeAuthInfo(Id id) {
         return authInfo.remove(id);
     }
 
+    /**
+     * 发送数据
+     *
+     * @param closeConn 待发送的数据
+     */
     abstract void sendBuffer(ByteBuffer closeConn);
 
+    /**
+     * 允许接收新数据
+     */
     abstract void enableRecv();
 
+    /**
+     * 不允许接收客户端的数据
+     */
     abstract void disableRecv();
 
+    /**
+     * 设置会话超时时间
+     *
+     * @param sessionTimeout 会话超时时间
+     */
     abstract void setSessionTimeout(int sessionTimeout);
 
+    /**
+     * ZooKeeper的Sasl服务器
+     */
     protected ZooKeeperSaslServer zooKeeperSaslServer = null;
 
+    /**
+     * 请求关闭异常类
+     */
     protected static class CloseRequestException extends IOException {
         private static final long serialVersionUID = -7854505709816442681L;
 
@@ -108,6 +177,9 @@ public abstract class ServerCnxn implements Stats, Watcher {
         }
     }
 
+    /**
+     * 流结束异常类
+     */
     protected static class EndOfStreamException extends IOException {
         private static final long serialVersionUID = -8255690282104294178L;
 
@@ -143,24 +215,67 @@ public abstract class ServerCnxn implements Stats, Watcher {
         }
     }
 
+    /**
+     * @return 服务器统计信息
+     */
     protected abstract ServerStats serverStats();
 
+    /**
+     * 连接创建时间
+     */
     protected final Date established = new Date();
 
+    /**
+     * 统计值,已接收的packet数
+     */
     protected final AtomicLong packetsReceived = new AtomicLong();
+    /**
+     * 统计值,已发送的packet数
+     */
     protected final AtomicLong packetsSent = new AtomicLong();
 
+    /**
+     * 最小延迟
+     */
     protected long minLatency;
+    /**
+     * 最大延迟
+     */
     protected long maxLatency;
+    /**
+     * 最后操作类型
+     */
     protected String lastOp;
+    /**
+     * 最后的cxid
+     */
     protected long lastCxid;
+    /**
+     * 最后的zxid
+     */
     protected long lastZxid;
+    /**
+     * 最后的响应时间
+     */
     protected long lastResponseTime;
+    /**
+     * 最后的延迟
+     */
     protected long lastLatency;
 
+    /**
+     * 总请求数量
+     */
     protected long count;
+    /**
+     * 总延迟
+     */
     protected long totalLatency;
 
+    /**
+     * 重置统计数据
+     */
+    @Override
     public synchronized void resetStats() {
         packetsReceived.set(0);
         packetsSent.set(0);
@@ -176,17 +291,39 @@ public abstract class ServerCnxn implements Stats, Watcher {
         totalLatency = 0;
     }
 
+    /**
+     * 增加接收的packet数量
+     */
     protected long incrPacketsReceived() {
         return packetsReceived.incrementAndGet();
     }
 
+    /**
+     * 增加outstandingRequest数量
+     *
+     * @param h
+     */
     protected void incrOutstandingRequests(RequestHeader h) {
     }
 
+    /**
+     * 增加发送的packet数量
+     *
+     * @return
+     */
     protected long incrPacketsSent() {
         return packetsSent.incrementAndGet();
     }
 
+    /**
+     * 更新响应的统计数据
+     *
+     * @param cxid
+     * @param zxid
+     * @param op
+     * @param start
+     * @param end
+     */
     protected synchronized void updateStatsForResponse(long cxid, long zxid,
                                                        String op, long start, long end) {
         // don't overwrite with "special" xids - we're interested
@@ -214,6 +351,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
         return (Date) established.clone();
     }
 
+    @Override
     public abstract long getOutstandingRequests();
 
     @Override
@@ -226,34 +364,42 @@ public abstract class ServerCnxn implements Stats, Watcher {
         return packetsSent.longValue();
     }
 
+    @Override
     public synchronized long getMinLatency() {
         return minLatency == Long.MAX_VALUE ? 0 : minLatency;
     }
 
+    @Override
     public synchronized long getAvgLatency() {
         return count == 0 ? 0 : totalLatency / count;
     }
 
+    @Override
     public synchronized long getMaxLatency() {
         return maxLatency;
     }
 
+    @Override
     public synchronized String getLastOperation() {
         return lastOp;
     }
 
+    @Override
     public synchronized long getLastCxid() {
         return lastCxid;
     }
 
+    @Override
     public synchronized long getLastZxid() {
         return lastZxid;
     }
 
+    @Override
     public synchronized long getLastResponseTime() {
         return lastResponseTime;
     }
 
+    @Override
     public synchronized long getLastLatency() {
         return lastLatency;
     }
@@ -380,5 +526,33 @@ public abstract class ServerCnxn implements Stats, Watcher {
                 LOG.error("Error closing a command socket ", e);
             }
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ServerCnxn that = (ServerCnxn) o;
+        return isOldClient == that.isOldClient &&
+                minLatency == that.minLatency &&
+                maxLatency == that.maxLatency &&
+                lastCxid == that.lastCxid &&
+                lastZxid == that.lastZxid &&
+                lastResponseTime == that.lastResponseTime &&
+                lastLatency == that.lastLatency &&
+                count == that.count &&
+                totalLatency == that.totalLatency &&
+                Objects.equals(authInfo, that.authInfo) &&
+                Objects.equals(zooKeeperSaslServer, that.zooKeeperSaslServer) &&
+                Objects.equals(established, that.established) &&
+                Objects.equals(packetsReceived, that.packetsReceived) &&
+                Objects.equals(packetsSent, that.packetsSent) &&
+                Objects.equals(lastOp, that.lastOp);
+    }
+
+    @Override
+    public int hashCode() {
+
+        return Objects.hash(authInfo, isOldClient, zooKeeperSaslServer, established, packetsReceived, packetsSent, minLatency, maxLatency, lastOp, lastCxid, lastZxid, lastResponseTime, lastLatency, count, totalLatency);
     }
 }

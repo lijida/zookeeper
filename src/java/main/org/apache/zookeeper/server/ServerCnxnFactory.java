@@ -45,7 +45,9 @@ public abstract class ServerCnxnFactory {
 
     private static final Logger LOG = LoggerFactory.getLogger(ServerCnxnFactory.class);
 
-    // Tells whether SSL is enabled on this ServerCnxnFactory
+    /**
+     * Tells whether SSL is enabled on this ServerCnxnFactory
+     */
     protected boolean secure;
 
     /**
@@ -67,7 +69,7 @@ public abstract class ServerCnxnFactory {
 
     /**
      * @return true if the cnxn that contains the sessionId exists in this ServerCnxnFactory
-     *         and it's closed. Otherwise false.
+     * and it's closed. Otherwise false.
      */
     public abstract boolean closeSession(long sessionId);
 
@@ -83,10 +85,14 @@ public abstract class ServerCnxnFactory {
     protected SaslServerCallbackHandler saslServerCallbackHandler;
     public Login login;
 
-    /** Maximum number of connections allowed from particular host (ip) */
+    /**
+     * @return Maximum number of connections allowed from particular host (ip)
+     */
     public abstract int getMaxClientCnxnsPerHost();
 
-    /** Maximum number of connections allowed from particular host (ip) */
+    /**
+     * @param max Maximum number of connections allowed from particular host (ip)
+     */
     public abstract void setMaxClientCnxnsPerHost(int max);
 
     public boolean isSecure() {
@@ -159,12 +165,15 @@ public abstract class ServerCnxnFactory {
     public abstract Iterable<Map<String, Object>> getAllConnectionInfo(boolean brief);
 
     private final ConcurrentHashMap<ServerCnxn, ConnectionBean> connectionBeans =
-            new ConcurrentHashMap<ServerCnxn, ConnectionBean>();
+            new ConcurrentHashMap<>();
 
-    // Connection set is relied on heavily by four letter commands
-    // Construct a ConcurrentHashSet using a ConcurrentHashMap
+
+    /**
+     * Connection set is relied on heavily by four letter commands.
+     * Construct a ConcurrentHashSet using a ConcurrentHashMap
+     */
     protected final Set<ServerCnxn> cnxns = Collections.newSetFromMap(
-            new ConcurrentHashMap<ServerCnxn, Boolean>());
+            new ConcurrentHashMap<>());
 
     public void unregisterConnection(ServerCnxn serverCnxn) {
         ConnectionBean jmxConnectionBean = connectionBeans.remove(serverCnxn);
@@ -188,7 +197,7 @@ public abstract class ServerCnxnFactory {
 
     /**
      * Initialize the server SASL if specified.
-     *
+     * <p>
      * If the user has specified a "ZooKeeperServer.LOGIN_CONTEXT_NAME_KEY"
      * or a jaas.conf using "java.security.auth.login.config"
      * the authentication is required and an exception is raised.

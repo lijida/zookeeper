@@ -472,6 +472,7 @@ public class FileTxnSnapLog {
     }
 
     /**
+     * 获取包含大于zxid的事务的事务日志文件,要么其后缀大于zxid,要么是其后缀小于等于zxid的最新的事务日志文件
      * get the snapshot logs which may contain transactions newer than the given zxid.
      * This includes logs with starting zxid greater than given zxid, as well as the
      * newest transaction log with starting zxid less than given zxid.  The latter log

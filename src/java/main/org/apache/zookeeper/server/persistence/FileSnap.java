@@ -181,6 +181,7 @@ public class FileSnap implements SnapShot {
     }
 
     /**
+     * 获取n个最新的快照文件,按zxid逆序排序
      * find the last n snapshots. this does not have
      * any checks if the snapshot might be valid or not
      *

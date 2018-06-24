@@ -42,6 +42,7 @@ import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.cert.Certificate;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -56,38 +57,62 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class NIOServerCnxn extends ServerCnxn {
     private static final Logger LOG = LoggerFactory.getLogger(NIOServerCnxn.class);
 
+    /**
+     * 关联的NIOServerCnxnFactory
+     */
     private final NIOServerCnxnFactory factory;
 
+    /**
+     * 封装的客户端连接
+     */
     private final SocketChannel sock;
 
     private final SelectorThread selectorThread;
 
+    /**
+     * {@link #sock}注册到selector后关联的SelectionKey
+     */
     private final SelectionKey sk;
 
     /**
      * 标识NIOServerCnxn是否初始化,server处理了客户端的"会话创建"请求后,才算初始化完成
      */
     private boolean initialized;
-
+    /**
+     * 分配四个字节缓冲区
+     */
     private final ByteBuffer lenBuffer = ByteBuffer.allocate(4);
 
     private ByteBuffer incomingBuffer = lenBuffer;
 
+    /**
+     * 待发送的数据队列
+     */
     private final Queue<ByteBuffer> outgoingBuffers =
-            new LinkedBlockingQueue<ByteBuffer>();
+            new LinkedBlockingQueue<>();
 
+    /**
+     * 会话超时时间
+     */
     private int sessionTimeout;
 
+    /**
+     * 关联的ZooKeeperServer
+     */
     private final ZooKeeperServer zkServer;
 
     /**
      * The number of requests that have been submitted but not yet responded to.
+     * <p>
+     * 已经被提交但还未响应的请求数量
      */
     private final AtomicInteger outstandingRequests = new AtomicInteger(0);
 
     /**
      * This is the id that uniquely identifies the session of a client. Once
      * this session is no longer active, the ephemeral nodes will go away.
+     * <p>
+     * 会话id
      */
     private long sessionId;
 
@@ -109,16 +134,31 @@ public class NIOServerCnxn extends ServerCnxn {
         } else {
             outstandingLimit = 1;
         }
+        //TCP_NODEALY的默认值为false,表示采用Negale算法.
+        // 如果调用setTcpNoDelay(true)方法,就会关闭Socket的缓冲,确保数据及时发送
         sock.socket().setTcpNoDelay(true);
         /* set socket linger to false, so that socket close does not block */
+        /*
+        当我们调用Socket的close方法时,默认的行为是当底层网卡所有数据都发送完毕后,关闭连接.
+        通过setSoLinger方法，我们可以修改close方法的行为.
+        1，setSoLinger(true, 0)
+        当网卡收到关闭连接请求后，无论数据是否发送完毕，立即发送RST包关闭连接
+        2，setSoLinger(true, delay_time)
+        当网卡收到关闭连接请求后，等待delay_time，
+        如果在delay_time过程中数据发送完毕，正常四次挥手关闭连接；
+        如果在delay_time过程中数据没有发送完毕，发送RST包关闭连接
+         */
         sock.socket().setSoLinger(false, -1);
+        // 获取IP地址
         InetAddress addr = ((InetSocketAddress) sock.socket()
                 .getRemoteSocketAddress()).getAddress();
+        //认证信息中添加IP地址
         addAuthInfo(new Id("ip", addr.getHostAddress()));
         this.sessionTimeout = factory.sessionlessCnxnTimeout;
     }
 
-    /* Send close connection packet to the client, doIO will eventually
+    /**
+     * Send close connection packet to the client, doIO will eventually
      * close the underlying machinery (like socket, selectorkey, etc...)
      */
     @Override
@@ -134,8 +174,7 @@ public class NIOServerCnxn extends ServerCnxn {
      */
     void sendBufferSync(ByteBuffer bb) {
         try {
-            /* configure socket to be blocking
-             * so that we dont have to do write in
+            /* configure socket to be blocking so that we dont have to do write in
              * a tight while loop
              */
             if (bb != ServerCnxnFactory.closeConn) {
@@ -165,12 +204,20 @@ public class NIOServerCnxn extends ServerCnxn {
     }
 
     /**
+     * 有两种情况会调用此方法:
+     * 1.根据lengthBuffer的值为incomingBuffer分配空间后,此时尚未将数据从socketChannel读取至incomingBuffer中
+     * 2.已经将数据从socketChannel中读取至incomingBuffer,且读取完毕
+     * <p>
      * Read the request payload (everything following the length prefix)
      */
     private void readPayload() throws IOException, InterruptedException {
         // have we read length bytes?
         if (incomingBuffer.remaining() != 0) {
             // sock is non-blocking, so ok
+            //对应情况1,此时刚为incomingBuffer分配空间,incomingBuffer为空,进行一次数据读取
+            //(1)若将incomingBuffer读满,则直接进行处理;
+            //(2)若未将incomingBuffer读满,则说明此次发送的数据不能构成一个完整的请求,则等待下一次数据到达后调用doIo()时再次将数据
+            //从socketChannel读取至incomingBuffer
             int rc = sock.read(incomingBuffer);
             if (rc < 0) {
                 throw new EndOfStreamException(
@@ -179,9 +226,10 @@ public class NIOServerCnxn extends ServerCnxn {
                                 + ", likely client has closed socket");
             }
         }
-// have we read length bytes?
+        // have we read length bytes?
         if (incomingBuffer.remaining() == 0) {
-            //已接收packet值++
+            //不管是情况1还是情况2,此时incomingBuffer已读满,其中内容必是一个request,处理该request
+            //更新统计值
             packetReceived();
             incomingBuffer.flip();
             if (!initialized) {
@@ -198,9 +246,13 @@ public class NIOServerCnxn extends ServerCnxn {
     }
 
     /**
+     * 由于selector.select()是水平触发,只要socketChannel中有数据需要读,就会一直被select.select()到,
+     * 但若此时正在读取数据的过程中,数据尚未被读取完毕,此时会被select.select()到,为了保证效率,在处理数据的过程中,
+     * 即使被selector.select()到,也不用处理此次事件,因此该标志在处理数据时设置为false,数据读取完成后,设置为true
+     * <p>
      * This boolean tracks whether the connection is ready for selection or
      * not. A connection is marked as not ready for selection while it is
-     * processing an IO request. The flag is used to gatekeep pushing interest
+     * processing an IO request. The flag is used to gate keep pushing interest
      * op updates onto the selector.
      */
     private final AtomicBoolean selectable = new AtomicBoolean(true);
@@ -223,12 +275,21 @@ public class NIOServerCnxn extends ServerCnxn {
         }
     }
 
+    /**
+     * 当{@link #sock}可写时调用该方法
+     *
+     * @param k {@link #sock}关联的SelectionKey
+     * @throws IOException
+     * @throws CloseRequestException
+     */
     void handleWrite(SelectionKey k) throws IOException, CloseRequestException {
         if (outgoingBuffers.isEmpty()) {
             return;
         }
 
         /*
+         * 设置position=0,limit=capacity,这样就可以将需要发送的数据从非直接内存填充至直接内存.
+         *
          * This is going to reset the buffer position to 0 and the
          * limit to the size of the buffer, so that we can fill it
          * with data from the non-direct buffers that we need to
@@ -236,6 +297,7 @@ public class NIOServerCnxn extends ServerCnxn {
          */
         ByteBuffer directBuffer = NIOServerCnxnFactory.getDirectBuffer();
         if (directBuffer == null) {
+            //不使用直接内存
             ByteBuffer[] bufferList = new ByteBuffer[outgoingBuffers.size()];
             // Use gathered write call. This updates the positions of the
             // byte buffers to reflect the bytes that were written out.
@@ -254,26 +316,35 @@ public class NIOServerCnxn extends ServerCnxn {
                 outgoingBuffers.remove();
             }
         } else {
+            //使用直接内存
             directBuffer.clear();
 
             for (ByteBuffer b : outgoingBuffers) {
                 if (directBuffer.remaining() < b.remaining()) {
                     /*
+                     * 若directBuffer的剩余可写空间不足以容纳b的所有数据,则修改b的limit为directBuffer的剩余可写空间.
+                     * 这样下面的复制代码刚好将directBuffer的可写空间写满
+                     *
                      * When we call put later, if the directBuffer is to
                      * small to hold everything, nothing will be copied,
                      * so we've got to slice the buffer if it's too big.
                      */
-                    b = (ByteBuffer) b.slice().limit(
+                    b = b.slice().limit(
                             directBuffer.remaining());
                 }
                 /*
+                 * put()会修改b和directBuffer的position值,
+                 * 但是我们不能修改b的position值(如果需要的话,会在发送完毕后修改此值),
+                 * 因此在复制结束后重置position值.
+                 *
                  * put() is going to modify the positions of both
-                 * buffers, put we don't want to change the position of
+                 * buffers, but we don't want to change the position of
                  * the source buffers (we'll do that after the send, if
                  * needed), so we save and reset the position after the
                  * copy
                  */
                 int p = b.position();
+                //将b中的数据复制到directBuffer中
                 directBuffer.put(b);
                 b.position(p);
                 if (directBuffer.remaining() == 0) {
@@ -286,11 +357,13 @@ public class NIOServerCnxn extends ServerCnxn {
              */
             directBuffer.flip();
 
+            //返回发送的字节数
             int sent = sock.write(directBuffer);
 
             ByteBuffer bb;
 
             // Remove the buffers that we have sent
+            // 将已发送的buffers从outgoingBuffers中移除
             while ((bb = outgoingBuffers.peek()) != null) {
                 if (bb == ServerCnxnFactory.closeConn) {
                     throw new CloseRequestException("close requested");
@@ -330,7 +403,7 @@ public class NIOServerCnxn extends ServerCnxn {
                 return;
             }
             //处理读操作的流程
-            //1.最开始incomingBuffer就是lenBuffer,第一次读取4个字节,即此次请求报文的长度
+            //1.最开始incomingBuffer就是lenBuffer,容量为4.第一次读取4个字节,即此次请求报文的长度
             //2.根据请求报文的长度分配incomingBuffer的大小
             //3.将读到的字节存放在incomingBuffer中,直至读满
             // (由于第2步中为incomingBuffer分配的长度刚好是报文的长度,此时incomingBuffer中刚好时一个报文)
@@ -345,15 +418,23 @@ public class NIOServerCnxn extends ServerCnxn {
                                     + Long.toHexString(sessionId)
                                     + ", likely client has closed socket");
                 }
-                //若incomingBuffer.remaining() == 0,有两种可能
+                /*
+                若incomingBuffer.remaining() == 0,有两种可能
+                1.incomingBuffer就是lenBuffer,此时incomingBuffer的内容是此次请求报文的长度.
+                根据lenBuffer为incomingBuffer分配空间后调用readPayload().
+                在readPayload()中会立马进行一次数据读取,若可以将incomingBuffer读满,则incomingBuffer中就是一个完整的请求,处理该请求;
+                若不能将incomingBuffer读满,说明出现了拆包问题,此时不能构造一个完整的请求,
+                只能等待客户端继续发送数据,等到下次socketChannel可读时,继续将数据读取到incomingBuffer中
+                2.incomingBuffer不是lenBuffer,说明上次读取时出现了拆包问题,incomingBuffer中只有一个请求的部分数据.
+                而这次读取的数据加上上次读取的数据凑成了一个完整的请求,调用readPayload()
+                 */
+
                 if (incomingBuffer.remaining() == 0) {
                     boolean isPayload;
                     if (incomingBuffer == lenBuffer) {
-                        //1.incomingBuffer就是lenBuffer,此时incomingBuffer的内容是此次请求报文的长度
                         // start of next request
-                        // 一个Request请求可能需要读取多次,第一次被读取时"incomingBuffer == lenBuffer"
-                        incomingBuffer.flip();
                         //解析上文中读取的报文总长度,同时为"incomingBuffer"分配len的空间供读取全部报文
+                        incomingBuffer.flip();
                         isPayload = readLength(k);
                         incomingBuffer.clear();
                     } else {
@@ -408,7 +489,12 @@ public class NIOServerCnxn extends ServerCnxn {
         zkServer.processPacket(this, incomingBuffer);
     }
 
-    // Only called as callback from zkServer.processPacket()
+
+    /**
+     * Only called as callback from {@link ZooKeeperServer#processPacket(ServerCnxn, ByteBuffer)}
+     *
+     * @param h
+     */
     @Override
     protected void incrOutstandingRequests(RequestHeader h) {
         if (h.getXid() >= 0) {
@@ -424,22 +510,37 @@ public class NIOServerCnxn extends ServerCnxn {
         }
     }
 
-    // returns whether we are interested in writing, which is determined
-    // by whether we have any pending buffers on the output queue or not
+
+    /**
+     * 返回是否监听OP_WRITE事件,若有待发送的数据,则监听OP_WRITE事件
+     *
+     * @return whether we are interested in writing, which is determined
+     * by whether we have any pending buffers on the output queue or not
+     */
     private boolean getWriteInterest() {
         return !outgoingBuffers.isEmpty();
     }
 
-    // returns whether we are interested in taking new requests, which is
-    // determined by whether we are currently throttled or not
+
+    /**
+     * 返回是否监听OP_READ事件,若不节流,则监听OP_READ事件
+     *
+     * @return whether we are interested in taking new requests, which is
+     * determined by whether we are currently throttled or not
+     */
     private boolean getReadInterest() {
         return !throttled.get();
     }
 
     private final AtomicBoolean throttled = new AtomicBoolean(false);
 
-    // Throttle acceptance of new requests. If this entailed a state change,
-    // register an interest op update request with the selector.
+
+    /**
+     * 执行节流策略,不再接受新request,如果需要进行状态更改,则向选择器注册一个interest op更新请求
+     * <p>
+     * Throttle acceptance of new requests. If this entailed a state change,
+     * register an interest op update request with the selector.
+     */
     @Override
     public void disableRecv() {
         if (throttled.compareAndSet(false, true)) {
@@ -447,9 +548,14 @@ public class NIOServerCnxn extends ServerCnxn {
         }
     }
 
-    // Disable throttling and resume acceptance of new requests. If this
-    // entailed a state change, register an interest op update request with
-    // the selector.
+
+    /**
+     * 关闭节流策略,重新接受新请求.如果需要进行状态更改,则向选择器注册一个interest op更新请求。
+     * <p>
+     * Disable throttling(节流) and resume acceptance of new requests. If this
+     * entailed a state change, register an interest op update request with
+     * the selector.
+     */
     @Override
     public void enableRecv() {
         if (throttled.compareAndSet(true, false)) {
@@ -466,6 +572,9 @@ public class NIOServerCnxn extends ServerCnxn {
     }
 
     /**
+     * 这个类封装了NIOServerCnxn的sendBuffer方法。它负责对客户的响应进行分块处理。
+     * 这个类并没有在内存中完整地构造响应(对于某些命令来说可能比较大)，而是将结果块化。
+     * <p>
      * This class wraps the sendBuffer method of NIOServerCnxn. It is
      * responsible for chunking up the response to a client. Rather
      * than cons'ing up a response fully in memory, which may be large
@@ -476,10 +585,14 @@ public class NIOServerCnxn extends ServerCnxn {
 
         /**
          * Check if we are ready to send another chunk.
+         * 检查是否准备好发送另一块
          *
          * @param force force sending, even if not a full chunk
          */
         private void checkFlush(boolean force) {
+            //满足以下两个条件之一,就发送数据:
+            //1.需要强制发送时，sb缓冲中只要有内容就会同步发送
+            //2.当sb的大小超过2048（块）时就需要发送
             if ((force && sb.length() > 0) || sb.length() > 2048) {
                 sendBufferSync(ByteBuffer.wrap(sb.toString().getBytes()));
                 // clear our internal buffer
@@ -489,9 +602,13 @@ public class NIOServerCnxn extends ServerCnxn {
 
         @Override
         public void close() throws IOException {
-            if (sb == null) return;
+            if (sb == null) {
+                return;
+            }
+            // 关闭之前需要强制性发送缓存
             checkFlush(true);
-            sb = null; // clear out the ref to ensure no reuse
+            // clear out the ref to ensure no reuse
+            sb = null;
         }
 
         @Override
@@ -571,6 +688,13 @@ public class NIOServerCnxn extends ServerCnxn {
     }
 
     /**
+     * @return true if the server is running, false otherwise.
+     */
+    boolean isZKServerRunning() {
+        return zkServer != null && zkServer.isRunning();
+    }
+
+    /**
      * Reads the first 4 bytes of lenBuffer, which could be true length or
      * four letter word.
      *
@@ -594,13 +718,7 @@ public class NIOServerCnxn extends ServerCnxn {
         return true;
     }
 
-    /**
-     * @return true if the server is running, false otherwise.
-     */
-    boolean isZKServerRunning() {
-        return zkServer != null && zkServer.isRunning();
-    }
-
+    @Override
     public long getOutstandingRequests() {
         return outstandingRequests.get();
     }
@@ -656,7 +774,7 @@ public class NIOServerCnxn extends ServerCnxn {
      * Close resources associated with the sock of this cnxn.
      */
     private void closeSock() {
-        if (sock.isOpen() == false) {
+        if (!sock.isOpen()) {
             return;
         }
 
@@ -672,7 +790,7 @@ public class NIOServerCnxn extends ServerCnxn {
      * Close resources associated with a sock.
      */
     public static void closeSock(SocketChannel sock) {
-        if (sock.isOpen() == false) {
+        if (!sock.isOpen()) {
             return;
         }
 
@@ -716,15 +834,15 @@ public class NIOServerCnxn extends ServerCnxn {
 
     private final static byte fourBytes[] = new byte[4];
 
-    /*
+    /**
      * (non-Javadoc)
+     * 异步发送response,将response序列化为ByteBuffer后添加至{@link #outgoingBuffers}
      *
-     * @see org.apache.zookeeper.server.ServerCnxnIface#sendResponse(org.apache.zookeeper.proto.ReplyHeader,
-     *      org.apache.jute.Record, java.lang.String)
-     *
-     * @param h 响应头
-     * @param r 响应体
+     * @param h   响应头
+     * @param r   响应体
      * @param tag 序列化表情
+     * @see org.apache.zookeeper.server.ServerCnxn#sendResponse(org.apache.zookeeper.proto.ReplyHeader,
+     * org.apache.jute.Record, java.lang.String)
      */
     @Override
     public void sendResponse(ReplyHeader h, Record r, String tag) {
@@ -858,4 +976,31 @@ public class NIOServerCnxn extends ServerCnxn {
                 "SSL is unsupported in NIOServerCnxn");
     }
 
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        NIOServerCnxn that = (NIOServerCnxn) o;
+        return initialized == that.initialized &&
+                sessionTimeout == that.sessionTimeout &&
+                sessionId == that.sessionId &&
+                outstandingLimit == that.outstandingLimit &&
+                Objects.equals(factory, that.factory) &&
+                Objects.equals(sock, that.sock) &&
+                Objects.equals(selectorThread, that.selectorThread) &&
+                Objects.equals(sk, that.sk) &&
+                Objects.equals(lenBuffer, that.lenBuffer) &&
+                Objects.equals(incomingBuffer, that.incomingBuffer) &&
+                Objects.equals(outgoingBuffers, that.outgoingBuffers) &&
+                Objects.equals(zkServer, that.zkServer) &&
+                Objects.equals(outstandingRequests, that.outstandingRequests) &&
+                Objects.equals(selectable, that.selectable) &&
+                Objects.equals(throttled, that.throttled);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(factory, sock, selectorThread, sk, initialized, lenBuffer, incomingBuffer, outgoingBuffers, sessionTimeout, zkServer, outstandingRequests, sessionId, outstandingLimit, selectable, throttled);
+    }
 }

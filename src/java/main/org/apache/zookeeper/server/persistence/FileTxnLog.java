@@ -282,6 +282,8 @@ public class FileTxnLog implements TxnLog {
     }
 
     /**
+     * 获取事务日志文件zxid小于等于snapshotZxid的第一个文件,返回其及其后的事务日志文件,以zxid升序排序
+     * <p>
      * Find the log file that starts at, or just before, the snapshot. Return
      * this and all subsequent logs. Results are ordered by zxid of file,
      * ascending order.
@@ -291,21 +293,22 @@ public class FileTxnLog implements TxnLog {
      * @return
      */
     public static File[] getLogFiles(File[] logDirList, long snapshotZxid) {
+        //获取事务日志文件
         List<File> files = Util.sortDataDir(logDirList, LOG_FILE_PREFIX, true);
+        //保存小于等于snapshotZxid的事务日志文件中zxid的最大值
         long logZxid = 0;
-        // Find the log file that starts before or at the same time as the
-        // zxid of the snapshot
+        // Find the log file that starts before or at the same time as the zxid of the snapshot
         for (File f : files) {
             long fzxid = Util.getZxidFromName(f.getName(), LOG_FILE_PREFIX);
             if (fzxid > snapshotZxid) {
                 continue;
             }
-            // the files
-            // are sorted with zxid's
+            // the files are sorted with zxid's
             if (fzxid > logZxid) {
                 logZxid = fzxid;
             }
         }
+        //获取大于等于logZxid的所有事务日志文件
         List<File> v = new ArrayList<>(5);
         for (File f : files) {
             long fzxid = Util.getZxidFromName(f.getName(), LOG_FILE_PREFIX);

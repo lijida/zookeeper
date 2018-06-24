@@ -32,7 +32,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * ExpiryQueue tracks elements in time sorted fixed duration buckets.
  * It's used by SessionTrackerImpl to expire sessions and NIOServerCnxnFactory
  * to expire connections.
- * 该类记录以时间排序的固定市场的bucket中的元素(分桶策略),用于session过期和connection过期
+ * 该类使用分桶策略过期元素,元素为{@link org.apache.zookeeper.server.SessionTracker.Session}或{@link ServerCnxn},
+ * 分别对应session和socket 连接的过期
+ * <p>
+ * 思考:即使元素过期了,何时删除过期的元素?后台启动一个定时任务?
  */
 public class ExpiryQueue<E> {
     /**
@@ -40,7 +43,7 @@ public class ExpiryQueue<E> {
      * value:该元素的过期时间
      */
     private final ConcurrentHashMap<E, Long> elemMap =
-            new ConcurrentHashMap<E, Long>();
+            new ConcurrentHashMap<>();
     /**
      * The maximum number of buckets is equal to max timeout/expirationInterval,
      * so the expirationInterval should not be too small compared to the
@@ -51,11 +54,14 @@ public class ExpiryQueue<E> {
      * value:于该过期时间过期的元素集
      */
     private final ConcurrentHashMap<Long, Set<E>> expiryMap =
-            new ConcurrentHashMap<Long, Set<E>>();
+            new ConcurrentHashMap<>();
     /**
      * 下一次进行会话超时检查的时间
      */
     private final AtomicLong nextExpirationTime = new AtomicLong();
+    /**
+     * 到期时间间隔
+     */
     private final int expirationInterval;
 
     public ExpiryQueue(int expirationInterval) {
@@ -92,6 +98,8 @@ public class ExpiryQueue<E> {
     }
 
     /**
+     * 为队列中的元素添加或更新过期时间,将超时四舍五入到此队列使用的到期时间间隔。
+     * <p>
      * Adds or updates expiration time for element in queue, rounding the
      * timeout to the expiry interval bucketed used by this queue.
      *

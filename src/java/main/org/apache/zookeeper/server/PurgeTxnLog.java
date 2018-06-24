@@ -31,7 +31,7 @@ import java.text.DateFormat;
 import java.util.*;
 
 /**
- * this class is used to clean up the 
+ * this class is used to clean up the
  * snapshot and data log dir's. This is usually
  * run as a cronjob on the zookeeper server machine.
  * Invocation of this class will clean up the datalogdir
@@ -64,7 +64,7 @@ public class PurgeTxnLog {
      *
      * @param dataDir the dir that has the logs
      * @param snapDir the dir that has the snapshots
-     * @param num the number of snapshots to keep
+     * @param num     the number of snapshots to keep
      * @throws IOException
      */
     public static void purge(File dataDir, File snapDir, int num) throws IOException {
@@ -73,7 +73,7 @@ public class PurgeTxnLog {
         }
 
         FileTxnSnapLog txnLog = new FileTxnSnapLog(dataDir, snapDir);
-
+        //获取num个最新的快照文件
         List<File> snaps = txnLog.findNRecentSnapshots(num);
         int numSnaps = snaps.size();
         if (numSnaps > 0) {
@@ -105,8 +105,7 @@ public class PurgeTxnLog {
          * recoverability of all snapshots being retained.  We determine that log file here by
          * calling txnLog.getSnapshotLogs().
          */
-        final Set<File> retainedTxnLogs = new HashSet<>();
-        retainedTxnLogs.addAll(Arrays.asList(txnLog.getSnapshotLogs(leastZxidToBeRetain)));
+        final Set<File> retainedTxnLogs = new HashSet<>(Arrays.asList(txnLog.getSnapshotLogs(leastZxidToBeRetain)));
 
         /**
          * Finds all candidates for deletion, which are files with a zxid in their name that is less
@@ -115,7 +114,7 @@ public class PurgeTxnLog {
         class MyFileFilter implements FileFilter {
             private final String prefix;
 
-            MyFileFilter(String prefix) {
+            private MyFileFilter(String prefix) {
                 this.prefix = prefix;
             }
 
@@ -132,6 +131,8 @@ public class PurgeTxnLog {
             }
         }
         // add all non-excluded log files
+        //获取待删除的事务日志文件
+        // (事务日志文件zxid小于leastZxidToBeRetain就删除,但是有一个例外,即小于等于leastZxidToBeRetain的拥有最大的zxid的事务日志文件)
         File[] logs = txnLog.getDataDir().listFiles(new MyFileFilter(PREFIX_LOG));
         List<File> files = new ArrayList<>();
         if (logs != null) {
@@ -139,12 +140,14 @@ public class PurgeTxnLog {
         }
 
         // add all non-excluded snapshot files to the deletion list
+        //获取待删除的快照文件(快照文件的zxid小于leastZxidToBeRetain即需删除)
         File[] snapshots = txnLog.getSnapDir().listFiles(new MyFileFilter(PREFIX_SNAPSHOT));
         if (snapshots != null) {
             files.addAll(Arrays.asList(snapshots));
         }
 
         // remove the old files
+        //删除旧文件
         for (File f : files) {
             final String msg = "Removing file: " +
                     DateFormat.getDateTimeInstance().format(f.lastModified()) +
@@ -160,9 +163,9 @@ public class PurgeTxnLog {
 
     /**
      * @param args dataLogDir [snapDir] -n count
-     * dataLogDir -- path to the txn log directory
-     * snapDir -- path to the snapshot directory
-     * count -- the number of old snaps/logs you want to keep, value should be greater than or equal to 3<br>
+     *             dataLogDir -- path to the txn log directory
+     *             snapDir -- path to the snapshot directory
+     *             count -- the number of old snaps/logs you want to keep, value should be greater than or equal to 3<br>
      */
     public static void main(String[] args) throws IOException {
         if (args.length < 3 || args.length > 4) {

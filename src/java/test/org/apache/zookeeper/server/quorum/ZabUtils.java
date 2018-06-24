@@ -115,19 +115,24 @@ public class ZabUtils {
         public int getMaxClientCnxnsPerHost() {
             return 0;
         }
+        @Override
         public int getLocalPort() {
             return 0;
         }
+        @Override
         public InetSocketAddress getLocalAddress() {
             return null;
         }
+        @Override
         public Iterable<ServerCnxn> getConnections() {
             return null;
         }
+        @Override
         public void configure(InetSocketAddress addr, int maxcc, boolean secure)
                 throws IOException {
         }
 
+        @Override
         public boolean closeSession(long sessionId) {
             return false;
         }
