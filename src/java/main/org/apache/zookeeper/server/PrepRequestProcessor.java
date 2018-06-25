@@ -80,7 +80,10 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
      */
     private static boolean failCreate = false;
 
-    LinkedBlockingQueue<Request> submittedRequests = new LinkedBlockingQueue<Request>();
+    /**
+     * 已提交待处理的请求队列
+     */
+    LinkedBlockingQueue<Request> submittedRequests = new LinkedBlockingQueue<>();
 
     private final RequestProcessor nextProcessor;
 
@@ -132,7 +135,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
     }
 
     private ChangeRecord getRecordForPath(String path) throws KeeperException.NoNodeException {
-        ChangeRecord lastChange = null;
+        ChangeRecord lastChange;
         synchronized (zks.outstandingChanges) {
             lastChange = zks.outstandingChangesForPath.get(path);
             if (lastChange == null) {
@@ -330,10 +333,11 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
      * This method will be called inside the ProcessRequestThread, which is a
      * singleton, so there will be a single thread calling this code.
      *
-     * @param type
-     * @param zxid
-     * @param request
-     * @param record
+     * @param type        请求类型
+     * @param zxid        zxid
+     * @param request     请求
+     * @param record      请求体
+     * @param deserialize 是否需要反序列化.若record只是new了一个实例,其数据并未初始化,则此值为true
      */
     protected void pRequest2Txn(int type, long zxid, Request request,
                                 Record record, boolean deserialize)
@@ -371,8 +375,9 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             case OpCode.delete:
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
                 DeleteRequest deleteRequest = (DeleteRequest) record;
-                if (deserialize)
+                if (deserialize) {
                     ByteBufferInputStream.byteBuffer2Record(request.request, deleteRequest);
+                }
                 String path = deleteRequest.getPath();
                 String parentPath = getParentPathAndValidate(path);
                 ChangeRecord parentRecord = getRecordForPath(parentPath);
@@ -544,8 +549,9 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             case OpCode.setACL:
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
                 SetACLRequest setAclRequest = (SetACLRequest) record;
-                if (deserialize)
+                if (deserialize) {
                     ByteBufferInputStream.byteBuffer2Record(request.request, setAclRequest);
+                }
                 path = setAclRequest.getPath();
                 validatePath(path, request.sessionId);
                 List<ACL> listACL = fixupACL(path, request.authInfo, setAclRequest.getAcl());
@@ -603,8 +609,9 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             case OpCode.check:
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
                 CheckVersionRequest checkVersionRequest = (CheckVersionRequest) record;
-                if (deserialize)
+                if (deserialize) {
                     ByteBufferInputStream.byteBuffer2Record(request.request, checkVersionRequest);
+                }
                 path = checkVersionRequest.getPath();
                 validatePath(path, request.sessionId);
                 nodeRecord = getRecordForPath(path);

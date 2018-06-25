@@ -79,6 +79,7 @@ public class LearnerHandlerTest extends ZKTestCase {
             return lastProcessedZxid;
         }
 
+        @Override
         public long getmaxCommittedLog() {
             if (!committedLog.isEmpty()) {
                 return committedLog.getLast().packet.getZxid();
@@ -86,6 +87,7 @@ public class LearnerHandlerTest extends ZKTestCase {
             return 0;
         }
 
+        @Override
         public long getminCommittedLog() {
             if (!committedLog.isEmpty()) {
                 return committedLog.getFirst().packet.getZxid();
@@ -97,6 +99,7 @@ public class LearnerHandlerTest extends ZKTestCase {
             return committedLog;
         }
 
+        @Override
         public ReentrantReadWriteLock getLogLock() {
             return lock;
         }

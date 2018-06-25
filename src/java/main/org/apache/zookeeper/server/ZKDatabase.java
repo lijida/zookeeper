@@ -78,7 +78,14 @@ public class ZKDatabase {
      */
     protected ConcurrentHashMap<Long, Integer> sessionsWithTimeouts;
     protected FileTxnSnapLog snapLog;
-    protected long minCommittedLog, maxCommittedLog;
+    /**
+     * 待同步的提案中最小的zxid
+     */
+    protected long minCommittedLog;
+    /**
+     * 待同步的提案中最大的zxid
+     */
+    protected long maxCommittedLog;
 
     /**
      * Default value is to use snapshot if txnlog size exceeds 1/3 the size of snapshot
@@ -89,7 +96,13 @@ public class ZKDatabase {
 
     public static final int commitLogCount = 500;
     protected static int commitLogBuffer = 700;
-    protected LinkedList<Proposal> committedLog = new LinkedList<Proposal>();
+    /**
+     * 待同步的提案
+     */
+    protected LinkedList<Proposal> committedLog = new LinkedList<>();
+    /**
+     * 读写锁,使读写committedLog的操作变为同步
+     */
     protected ReentrantReadWriteLock logLock = new ReentrantReadWriteLock();
     volatile private boolean initialized = false;
 

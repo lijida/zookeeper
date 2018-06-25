@@ -52,7 +52,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
     /**
      * 认证信息
      */
-    private Set<Id> authInfo = Collections.newSetFromMap(new ConcurrentHashMap<Id, Boolean>());
+    private Set<Id> authInfo = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     /**
      * If the client is of old version, we don't send r-o mode info to it.

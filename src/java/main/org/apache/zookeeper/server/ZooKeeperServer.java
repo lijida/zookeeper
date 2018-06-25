@@ -81,12 +81,30 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
      * value of -1 indicates unset, use default
      */
     protected int maxSessionTimeout = -1;
+    /**
+     * session管理器
+     */
     protected SessionTracker sessionTracker;
+    /**
+     * 持久化组件
+     */
     private FileTxnSnapLog txnLogFactory = null;
+    /**
+     * 内存数据库
+     */
     private ZKDatabase zkDb;
+    /**
+     * 用于生成下一个事务操作的id
+     */
     private final AtomicLong hzxid = new AtomicLong(0);
     public final static Exception ok = new Exception("No prob");
+    /**
+     * 请求处理链的第一个请求处理器
+     */
     protected RequestProcessor firstProcessor;
+    /**
+     * 服务器状态
+     */
     protected volatile State state = State.INITIAL;
 
     protected enum State {
@@ -100,14 +118,19 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     static final private long superSecret = 0XB3415C00L;
 
     /**
-     * 正在处理中的request
+     * server上正在处理中的request个数
      */
     private final AtomicInteger requestsInProcess = new AtomicInteger(0);
     /**
      * 待处理的修改
      */
     final Deque<ChangeRecord> outstandingChanges = new ArrayDeque<>();
-    // this data structure must be accessed under the outstandingChanges lock
+    /**
+     * this data structure must be accessed under the outstandingChanges lock
+     * <p>
+     * key:path
+     * value:该path下的changeRecord
+     */
     final Map<String, ChangeRecord> outstandingChangesForPath =
             new HashMap<>();
 
@@ -364,9 +387,15 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         hzxid.set(zxid);
     }
 
+    /**
+     * 关闭会话
+     * @param sessionId 会话id
+     */
     private void close(long sessionId) {
+        //构造关闭会话的请求
         Request si = new Request(null, sessionId, 0, OpCode.closeSession, null, null);
         setLocalSessionFlag(si);
+        //提交请求
         submitRequest(si);
     }
 
@@ -643,6 +672,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     }
 
     /**
+     * 用于PrepRP和FinalRP直接的数据共享
+     * <p>
      * This structure is used to facilitate information sharing between PrepRP
      * and FinalRP.
      */
@@ -656,15 +687,25 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             this.acl = acl;
         }
 
+        /**
+         * zxid
+         */
         long zxid;
 
         String path;
+        /**
+         * Make sure to create a new object when changing
+         */
+        StatPersisted stat;
 
-        StatPersisted stat; /* Make sure to create a new object when changing */
-
+        /**
+         * 子节点个数
+         */
         int childCount;
-
-        List<ACL> acl; /* Make sure to create a new object when changing */
+        /**
+         * Make sure to create a new object when changing
+         */
+        List<ACL> acl;
 
         ChangeRecord duplicate(long zxid) {
             StatPersisted stat = new StatPersisted();
@@ -814,6 +855,11 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     protected void setLocalSessionFlag(Request si) {
     }
 
+    /**
+     * 将请求提交给请求处理链
+     *
+     * @param si 请求
+     */
     public void submitRequest(Request si) {
         if (firstProcessor == null) {
             synchronized (this) {
@@ -1105,15 +1151,24 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         return false;
     }
 
+    /**
+     * 处理报文
+     *
+     * @param cnxn           封装与客户端的连接
+     * @param incomingBuffer 报文数据
+     * @throws IOException
+     */
     public void processPacket(ServerCnxn cnxn, ByteBuffer incomingBuffer) throws IOException {
         // We have the request, now process and setup for next
         InputStream bais = new ByteBufferInputStream(incomingBuffer);
         BinaryInputArchive bia = BinaryInputArchive.getArchive(bais);
+        //反序列化请求头
         RequestHeader h = new RequestHeader();
         h.deserialize(bia, "header");
         // Through the magic of byte buffers, txn will not be
         // pointing  to the start of the txn
         incomingBuffer = incomingBuffer.slice();
+        //如果是认证请求
         if (h.getType() == OpCode.auth) {
             LOG.info("got auth packet " + cnxn.getRemoteSocketAddress());
             AuthPacket authPacket = new AuthPacket();
@@ -1161,12 +1216,14 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
                 cnxn.sendResponse(rh, rsp, "response"); // not sure about 3rd arg..what is it?
                 return;
             } else {
+                //普通请求
                 Request si = new Request(cnxn, cnxn.getSessionId(), h.getXid(),
                         h.getType(), incomingBuffer, cnxn.getAuthInfo());
                 si.setOwner(ServerCnxn.me);
                 // Always treat packet from the client as a possible
                 // local request.
                 setLocalSessionFlag(si);
+                //提交请求
                 submitRequest(si);
             }
         }
@@ -1217,12 +1274,25 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         return new SetSASLResponse(responseToken);
     }
 
-    // entry point for quorum/Learner.java
+
+    /**
+     * entry point for quorum/Learner.java
+     *
+     * @param hdr
+     * @param txn
+     * @return
+     */
     public ProcessTxnResult processTxn(TxnHeader hdr, Record txn) {
         return processTxn(null, hdr, txn);
     }
 
-    // entry point for FinalRequestProcessor.java
+
+    /**
+     * entry point for FinalRequestProcessor.java
+     *
+     * @param request
+     * @return
+     */
     public ProcessTxnResult processTxn(Request request) {
         return processTxn(request, request.getHdr(), request.getTxn());
     }
@@ -1237,6 +1307,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         } else {
             rc = new ProcessTxnResult();
         }
+        //创建会话请求
         if (opCode == OpCode.createSession) {
             if (hdr != null && txn instanceof CreateSessionTxn) {
                 CreateSessionTxn cst = (CreateSessionTxn) txn;
@@ -1252,6 +1323,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
                         + txn.toString());
             }
         } else if (opCode == OpCode.closeSession) {
+            //关闭会话请求
             sessionTracker.removeSession(sessionId);
         }
         return rc;

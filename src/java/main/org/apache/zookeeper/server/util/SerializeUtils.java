@@ -153,7 +153,9 @@ public class SerializeUtils {
     }
 
     public static byte[] serializeRequest(Request request) {
-        if (request == null || request.getHdr() == null) return null;
+        if (request == null || request.getHdr() == null) {
+            return null;
+        }
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         BinaryOutputArchive boa = BinaryOutputArchive.getArchive(baos);
         try {

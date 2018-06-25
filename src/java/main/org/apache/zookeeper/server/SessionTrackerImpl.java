@@ -42,7 +42,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * period. Sessions are thus expired in batches made up of sessions that expire
  * in a given interval.
  * 这是一个满足{@link SessionTracker }所有特性的实现,它将{@link org.apache.zookeeper.server.SessionTracker.Session}以tickTime进行分组,
- * 因此session是成组过期的,这组session在同一个tickTime过期.
+ * 因此session是成组过期的,这组session在同一个tickTime上过期.
  * 此类也是一个线程,用于处理会话超时检查及清理工作
  */
 public class SessionTrackerImpl extends ZooKeeperCriticalThread implements
@@ -54,8 +54,11 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements
      * value:session
      */
     protected final ConcurrentHashMap<Long, SessionImpl> sessionsById =
-            new ConcurrentHashMap<Long, SessionImpl>();
+            new ConcurrentHashMap<>();
 
+    /**
+     * 用于请求过期会话
+     */
     private final ExpiryQueue<SessionImpl> sessionExpiryQueue;
 
     /**
@@ -89,6 +92,9 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements
          */
         boolean isClosing;
 
+        /**
+         * 会话所有者,用于判断是否发生了会话迁移
+         */
         Object owner;
 
         @Override
@@ -136,7 +142,7 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements
                               long serverId, ZooKeeperServerListener listener) {
         super("SessionTracker", listener);
         this.expirer = expirer;
-        this.sessionExpiryQueue = new ExpiryQueue<SessionImpl>(tickTime);
+        this.sessionExpiryQueue = new ExpiryQueue<>(tickTime);
         this.sessionsWithTimeout = sessionsWithTimeout;
         this.nextSessionId.set(initializeNextSession(serverId));
         for (Entry<Long, Integer> e : sessionsWithTimeout.entrySet()) {

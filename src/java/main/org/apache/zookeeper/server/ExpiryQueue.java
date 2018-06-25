@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 分别对应session和socket 连接的过期
  * <p>
  * 思考:即使元素过期了,何时删除过期的元素?后台启动一个定时任务?
+ * 1.连接:ConnectionExpirerThread清理过期连接
  */
 public class ExpiryQueue<E> {
     /**
@@ -60,7 +61,7 @@ public class ExpiryQueue<E> {
      */
     private final AtomicLong nextExpirationTime = new AtomicLong();
     /**
-     * 到期时间间隔
+     * 过期时间间隔,单位:ms
      */
     private final int expirationInterval;
 
@@ -111,7 +112,7 @@ public class ExpiryQueue<E> {
     public Long update(E elem, int timeout) {
         Long prevExpiryTime = elemMap.get(elem);
         long now = Time.currentElapsedTime();
-        //2.计算该会话新的的超时时间
+        //2.计算该会话新的的过期时间
         Long newExpiryTime = roundToNextInterval(now + timeout);
 
         if (newExpiryTime.equals(prevExpiryTime)) {
@@ -138,6 +139,7 @@ public class ExpiryQueue<E> {
         // Map the elem to the new expiry time. If a different previous
         // mapping was present, clean up the previous expiry bucket.
         //4.从旧bucket上删除该回话
+        //获取该会话旧的过期时间,根据旧的过期时间在expiryMap获取在该过期时间过期的session集合,从该集合中删除该会话
         prevExpiryTime = elemMap.put(elem, newExpiryTime);
         if (prevExpiryTime != null && !newExpiryTime.equals(prevExpiryTime)) {
             Set<E> prevSet = expiryMap.get(prevExpiryTime);
@@ -149,6 +151,8 @@ public class ExpiryQueue<E> {
     }
 
     /**
+     * 下次过期的时间(单位:ms),如果已经超过下次过期的时间,则返回0
+     *
      * @return milliseconds until next expiration time, or 0 if has already past
      */
     public long getWaitTime() {
@@ -158,6 +162,9 @@ public class ExpiryQueue<E> {
     }
 
     /**
+     * 将即将超时的元素集合从{@link #expiryMap}中删除,此方法需要通过检查{@link #getWaitTime()}来频繁地调用,
+     * 否则将会有大量已超时的元素堆积在{@link #expiryMap}中
+     * <p>
      * Remove the next expired set of elements from expireMap. This method needs
      * to be called frequently enough by checking getWaitTime(), otherwise there
      * will be a backlog of empty sets queued up in expiryMap.

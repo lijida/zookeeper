@@ -79,14 +79,14 @@ public class FinalRequestProcessor implements RequestProcessor {
         if (LOG.isTraceEnabled()) {
             ZooTrace.logRequest(LOG, traceMask, 'E', request, "");
         }
-        ProcessTxnResult rc = null;
+        ProcessTxnResult rc;
         synchronized (zks.outstandingChanges) {
             // Need to process local session requests
-            //将事务请求应用到DataTree
+            //将事务请求应用到DataTree(最终调用DataTree的相关方法)
             rc = zks.processTxn(request);
 
-            // request.hdr is set for write requests, which are the only ones
-            // that add to outstandingChanges.
+            // request.hdr is set for write requests,
+            // which are the only ones that add to outstandingChanges.
             if (request.getHdr() != null) {
                 TxnHeader hdr = request.getHdr();
                 Record txn = request.getTxn();
@@ -110,7 +110,7 @@ public class FinalRequestProcessor implements RequestProcessor {
 
             // do not add non quorum packets to the queue.
             if (request.isQuorum()) {
-                // 只将quorum包（事务性请求）添加进队列
+                // 只将quorum包(事务性请求)添加进待同步的提案队列
                 zks.getZKDatabase().addCommittedProposal(request);
             }
         }
@@ -181,11 +181,11 @@ public class FinalRequestProcessor implements RequestProcessor {
                 case OpCode.createSession: {
                     // 创建会话请求, 更新延迟
                     zks.serverStats().updateLatency(request.createTime);
-// 更新响应的状态
+                    // 更新响应的状态
                     lastOp = "SESS";
                     cnxn.updateStatsForResponse(request.cxid, request.zxid, lastOp,
                             request.createTime, Time.currentElapsedTime());
-// 结束会话初始化
+                    // 结束会话初始化
                     zks.finishSessionInit(request.cnxn, true);
                     return;
                 }
@@ -437,13 +437,12 @@ public class FinalRequestProcessor implements RequestProcessor {
             LOG.error("Dumping request buffer: 0x" + sb.toString());
             err = Code.MARSHALLINGERROR;
         }
-// 获取最后处理的zxid
+        // 获取最后处理的zxid
         long lastZxid = zks.getZKDatabase().getDataTreeLastProcessedZxid();
-        ReplyHeader header =
-                new ReplyHeader(request.cxid, lastZxid, err.intValue());
-// 更新服务器延迟
+        ReplyHeader header = new ReplyHeader(request.cxid, lastZxid, err.intValue());
+        // 更新服务器延迟
         zks.serverStats().updateLatency(request.createTime);
-        //统计处理
+        //更新统计信息
         cnxn.updateStatsForResponse(request.cxid, lastZxid, lastOp,
                 request.createTime, Time.currentElapsedTime());
 

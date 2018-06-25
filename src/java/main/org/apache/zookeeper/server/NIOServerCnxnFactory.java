@@ -619,6 +619,8 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
     }
 
     /**
+     * 此线程用于关闭过期的连接,这样没有会话的连接就会过期.
+     * <p>
      * This thread is responsible for closing stale connections so that
      * connections on which no session is established are properly expired.
      */
@@ -650,7 +652,8 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
     ServerSocketChannel ss;
 
     /**
-     * 使用其执行高效的socket I/O,由于I/O由worker thread执行,因此此直接内存设置为ThreadLocal的
+     * 使用其执行高效的socket I/O,由于I/O由worker thread执行,因此将直接内存设置为ThreadLocal的.
+     * 各连接可以在共享直接内存的同时无需担心并发问题.
      * <p>
      * We use this buffer to do efficient socket I/O. Because I/O is handled
      * by the worker threads (or the selector threads directly, if no worker

@@ -104,7 +104,7 @@ public class NIOServerCnxn extends ServerCnxn {
     /**
      * The number of requests that have been submitted but not yet responded to.
      * <p>
-     * 已经被提交但还未响应的请求数量
+     * 该连接上已经被提交但还未响应的请求数量
      */
     private final AtomicInteger outstandingRequests = new AtomicInteger(0);
 
@@ -329,13 +329,11 @@ public class NIOServerCnxn extends ServerCnxn {
                      * small to hold everything, nothing will be copied,
                      * so we've got to slice the buffer if it's too big.
                      */
-                    b = b.slice().limit(
-                            directBuffer.remaining());
+                    b = (ByteBuffer) b.slice().limit(directBuffer.remaining());
                 }
                 /*
-                 * put()会修改b和directBuffer的position值,
-                 * 但是我们不能修改b的position值(如果需要的话,会在发送完毕后修改此值),
-                 * 因此在复制结束后重置position值.
+                 * put()会修改b和directBuffer的position值,但是我们不能修改b的position值,
+                 * 因为下文需要position的值将已发送的数据移出outgoingBuffers,因此在复制结束后重置position值.
                  *
                  * put() is going to modify the positions of both
                  * buffers, but we don't want to change the position of
@@ -357,7 +355,7 @@ public class NIOServerCnxn extends ServerCnxn {
              */
             directBuffer.flip();
 
-            //返回发送的字节数
+            //返回发送的字节数,下文据此移除已发送的数据
             int sent = sock.write(directBuffer);
 
             ByteBuffer bb;
@@ -370,6 +368,8 @@ public class NIOServerCnxn extends ServerCnxn {
                 }
                 if (sent < bb.remaining()) {
                     /*
+                     * 只发送了此Buffer的部分数据,因此修改position的值并退出循环
+                     *
                      * We only partially sent this buffer, so we update
                      * the position and exit the loop.
                      */
@@ -378,6 +378,7 @@ public class NIOServerCnxn extends ServerCnxn {
                 }
                 packetSent();
                 /* We've sent the whole buffer, so drop the buffer */
+                //该buffer的数据已经全部发送,将buffer从outgoingBuffers中移除
                 sent -= bb.remaining();
                 outgoingBuffers.remove();
             }
@@ -402,12 +403,14 @@ public class NIOServerCnxn extends ServerCnxn {
 
                 return;
             }
-            //处理读操作的流程
-            //1.最开始incomingBuffer就是lenBuffer,容量为4.第一次读取4个字节,即此次请求报文的长度
-            //2.根据请求报文的长度分配incomingBuffer的大小
-            //3.将读到的字节存放在incomingBuffer中,直至读满
-            // (由于第2步中为incomingBuffer分配的长度刚好是报文的长度,此时incomingBuffer中刚好时一个报文)
-            //4.处理报文
+           /*
+            处理读操作的流程
+            1.最开始incomingBuffer就是lenBuffer,容量为4.第一次读取4个字节,即此次请求报文的长度
+            2.根据请求报文的长度分配incomingBuffer的大小
+            3.将读到的字节存放在incomingBuffer中,直至读满
+             (由于第2步中为incomingBuffer分配的长度刚好是报文的长度,此时incomingBuffer中刚好时一个报文)
+            4.处理报文
+            */
             if (k.isReadable()) {
                 //若是客户端请求,此时触发读事件
                 //初始化时incomingBuffer即时lengthBuffer,只分配了4个字节,供用户读取一个int(此int值就是此次请求报文的总长度)
@@ -419,12 +422,11 @@ public class NIOServerCnxn extends ServerCnxn {
                                     + ", likely client has closed socket");
                 }
                 /*
-                若incomingBuffer.remaining() == 0,有两种可能
+                只有incomingBuffer.remaining() == 0,才会进行下一步的处理,否则一直读取数据直到incomingBuffer读满,此时有两种可能:
                 1.incomingBuffer就是lenBuffer,此时incomingBuffer的内容是此次请求报文的长度.
                 根据lenBuffer为incomingBuffer分配空间后调用readPayload().
-                在readPayload()中会立马进行一次数据读取,若可以将incomingBuffer读满,则incomingBuffer中就是一个完整的请求,处理该请求;
-                若不能将incomingBuffer读满,说明出现了拆包问题,此时不能构造一个完整的请求,
-                只能等待客户端继续发送数据,等到下次socketChannel可读时,继续将数据读取到incomingBuffer中
+                在readPayload()中会立马进行一次数据读取,(1)若可以将incomingBuffer读满,则incomingBuffer中就是一个完整的请求,处理该请求;
+                (2)若不能将incomingBuffer读满,说明出现了拆包问题,此时不能构造一个完整的请求,只能等待客户端继续发送数据,等到下次socketChannel可读时,继续将数据读取到incomingBuffer中
                 2.incomingBuffer不是lenBuffer,说明上次读取时出现了拆包问题,incomingBuffer中只有一个请求的部分数据.
                 而这次读取的数据加上上次读取的数据凑成了一个完整的请求,调用readPayload()
                  */
@@ -435,6 +437,7 @@ public class NIOServerCnxn extends ServerCnxn {
                         // start of next request
                         //解析上文中读取的报文总长度,同时为"incomingBuffer"分配len的空间供读取全部报文
                         incomingBuffer.flip();
+                        //为incomeingBuffer分配空间时还包括了判断是否是"4字命令"的逻辑
                         isPayload = readLength(k);
                         incomingBuffer.clear();
                     } else {
@@ -485,6 +488,11 @@ public class NIOServerCnxn extends ServerCnxn {
         }
     }
 
+    /**
+     * 处理普通请求
+     *
+     * @throws IOException
+     */
     private void readRequest() throws IOException {
         zkServer.processPacket(this, incomingBuffer);
     }
