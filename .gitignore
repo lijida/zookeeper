@@ -15,7 +15,6 @@ hs_err_pid*
 .eclipse/
 .idea/
 .project
-.revision/
 .settings/
 .externalToolBuilders/
 local.properties
@@ -47,7 +46,6 @@ logs/
 *.bak
 *.tmp
 !tmp
-!tmp/myid
 tmp/**
 tmp/**/*
 .DS_Store
@@ -57,8 +55,6 @@ tmp/**/*
 
 # C
 tags
-.cproject
-.project
 obj
 src/c/core.*
 src/c/TEST-*.txt
@@ -82,4 +78,3 @@ src/c/install-sh
 src/c/ltmain.sh
 src/c/missing
 
-build/

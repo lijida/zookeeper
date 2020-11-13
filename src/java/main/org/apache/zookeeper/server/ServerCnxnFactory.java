@@ -55,8 +55,14 @@ public abstract class ServerCnxnFactory {
      */
     static final ByteBuffer closeConn = ByteBuffer.allocate(0);
 
+    /**
+     * @return 网络管理器监听的本地端口号
+     */
     public abstract int getLocalPort();
 
+    /**
+     * @return 管理的所有连接
+     */
     public abstract Iterable<ServerCnxn> getConnections();
 
     public int getNumAliveConnections() {
@@ -77,9 +83,21 @@ public abstract class ServerCnxnFactory {
         configure(addr, maxcc, false);
     }
 
+    /**
+     *
+     * @param addr 监听的本地socket地址
+     * @param maxcc 每个IP地址最多建立的连接数
+     * @param secure 是否开启SSL
+     * @throws IOException
+     */
     public abstract void configure(InetSocketAddress addr, int maxcc, boolean secure)
             throws IOException;
 
+    /**
+     * 重新配置监听的端口号
+     *
+     * @param addr 本地socket地址
+     */
     public abstract void reconfigure(InetSocketAddress addr);
 
     protected SaslServerCallbackHandler saslServerCallbackHandler;
@@ -103,15 +121,33 @@ public abstract class ServerCnxnFactory {
         startup(zkServer, true);
     }
 
-    // This method is to maintain compatiblity of startup(zks) and enable sharing of zks
-    // when we add secureCnxnFactory.
+
+    /**
+     * This method is to maintain compatiblity of startup(zks) and enable sharing of zks when we add secureCnxnFactory.
+     *
+     * @param zkServer    关联是ZooKeeperServer
+     * @param startServer 是否启动ZooKeeperServer
+     * @throws IOException
+     * @throws InterruptedException
+     */
     public abstract void startup(ZooKeeperServer zkServer, boolean startServer)
             throws IOException, InterruptedException;
 
+    /**
+     * 等待{@link ServerCnxnFactory}启动的所有线程死亡
+     *
+     * @throws InterruptedException
+     */
     public abstract void join() throws InterruptedException;
 
+    /**
+     * 关闭网络IO管理器
+     */
     public abstract void shutdown();
 
+    /**
+     * 启动网络IO管理器
+     */
     public abstract void start();
 
     protected ZooKeeperServer zkServer;
@@ -127,8 +163,17 @@ public abstract class ServerCnxnFactory {
         }
     }
 
+    /**
+     * 关闭所有连接
+     */
     public abstract void closeAll();
 
+    /**
+     * 根据ZOOKEEPER_SERVER_CNXN_FACTORY创建ServerCnxnFactory
+     *
+     * @return 新建的ServerCnxnFactory
+     * @throws IOException
+     */
     static public ServerCnxnFactory createFactory() throws IOException {
         String serverCnxnFactoryName =
                 System.getProperty(ZOOKEEPER_SERVER_CNXN_FACTORY);
@@ -158,10 +203,20 @@ public abstract class ServerCnxnFactory {
         return factory;
     }
 
+    /**
+     * @return 监听的本地socket地址
+     */
     public abstract InetSocketAddress getLocalAddress();
 
+    /**
+     * 重置所有连接的统计信息
+     */
     public abstract void resetAllConnectionStats();
 
+    /**
+     * @param brief 是否只返回简要信息
+     * @return 所有连接的相关信息
+     */
     public abstract Iterable<Map<String, Object>> getAllConnectionInfo(boolean brief);
 
     private final ConcurrentHashMap<ServerCnxn, ConnectionBean> connectionBeans =
@@ -171,6 +226,8 @@ public abstract class ServerCnxnFactory {
     /**
      * Connection set is relied on heavily by four letter commands.
      * Construct a ConcurrentHashSet using a ConcurrentHashMap
+     * <p>
+     * 保存注册到ServerCnxnFactory上的ServerCnxn
      */
     protected final Set<ServerCnxn> cnxns = Collections.newSetFromMap(
             new ConcurrentHashMap<>());

@@ -34,6 +34,7 @@ public class QuorumBean implements QuorumMXBean, ZKMBeanInfo {
         return name;
     }
     
+    @Override
     public boolean isHidden() {
         return false;
     }

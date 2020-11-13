@@ -91,6 +91,7 @@ public abstract class ClientBase extends ZKTestCase {
      *
      */
     protected static class NullWatcher implements Watcher {
+        @Override
         public void process(WatchedEvent event) { /* nada */ }
     }
 

@@ -687,6 +687,9 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
     private final ConcurrentHashMap<InetAddress, Set<NIOServerCnxn>> ipMap =
             new ConcurrentHashMap<>();
 
+    /**
+     * 服务器能接收的每个IP地址下最多建立的连接数
+     */
     protected int maxClientCnxns = 60;
 
     int sessionlessCnxnTimeout;
@@ -1080,7 +1083,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
 
     @Override
     public Iterable<Map<String, Object>> getAllConnectionInfo(boolean brief) {
-        HashSet<Map<String, Object>> info = new HashSet<Map<String, Object>>();
+        HashSet<Map<String, Object>> info = new HashSet<>();
         // No need to synchronize since cnxns is backed by a ConcurrentHashMap
         for (ServerCnxn c : cnxns) {
             info.add(c.getConnectionInfo(brief));

@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,8 +18,26 @@
 
 package org.apache.zookeeper.server;
 
-import static org.jboss.netty.buffer.ChannelBuffers.dynamicBuffer;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.common.X509Exception;
+import org.apache.zookeeper.common.X509Exception.SSLContextException;
+import org.apache.zookeeper.common.X509Util;
+import org.apache.zookeeper.common.ZKConfig;
+import org.apache.zookeeper.server.auth.ProviderRegistry;
+import org.apache.zookeeper.server.auth.X509AuthenticationProvider;
+import org.jboss.netty.bootstrap.ServerBootstrap;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
+import org.jboss.netty.channel.*;
+import org.jboss.netty.channel.ChannelHandler.Sharable;
+import org.jboss.netty.channel.group.ChannelGroup;
+import org.jboss.netty.channel.group.DefaultChannelGroup;
+import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
+import org.jboss.netty.handler.ssl.SslHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.*;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -31,55 +49,39 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLPeerUnverifiedException;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.X509KeyManager;
-import javax.net.ssl.X509TrustManager;
-
-import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.common.ZKConfig;
-import org.apache.zookeeper.common.X509Exception;
-import org.apache.zookeeper.common.X509Exception.SSLContextException;
-import org.apache.zookeeper.common.X509Util;
-import org.apache.zookeeper.server.auth.ProviderRegistry;
-import org.apache.zookeeper.server.auth.X509AuthenticationProvider;
-import org.jboss.netty.bootstrap.ServerBootstrap;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
-import org.jboss.netty.channel.ChannelHandler.Sharable;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.ExceptionEvent;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelHandler;
-import org.jboss.netty.channel.WriteCompletionEvent;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.group.DefaultChannelGroup;
-import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
-import org.jboss.netty.handler.ssl.SslHandler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static org.jboss.netty.buffer.ChannelBuffers.dynamicBuffer;
 
 public class NettyServerCnxnFactory extends ServerCnxnFactory {
     private static final Logger LOG = LoggerFactory.getLogger(NettyServerCnxnFactory.class);
 
+    /**
+     * 服务端启动器
+     */
     ServerBootstrap bootstrap;
+    /**
+     * 服务端channel
+     */
     Channel parentChannel;
     ChannelGroup allChannels = new DefaultChannelGroup("zkServerCnxns");
+    /**
+     * ipMap is used to limit connections per IP
+     * key:客户端ip地址
+     * value:该ip建立的连接
+     */
     Map<InetAddress, Set<NettyServerCnxn>> ipMap =
-        new HashMap<InetAddress, Set<NettyServerCnxn>>( );
+            new HashMap<>();
+    /**
+     * 监听的本地端口号
+     */
     InetSocketAddress localAddress;
+    /**
+     * 服务器能接收的每个IP地址下最多建立的连接数
+     */
     int maxClientCnxns = 60;
 
     /**
+     * 此类设置为内部类,便于访问{@link ServerCnxnFactory}的成员变量和方法
+     * <p>
      * This is an inner class since we need to extend SimpleChannelHandler, but
      * NettyServerCnxnFactory already extends ServerCnxnFactory. By making it inner
      * this class gets access to the member variables and methods.
@@ -89,18 +91,23 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
 
         @Override
         public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
-            throws Exception
-        {
+                throws Exception {
             if (LOG.isTraceEnabled()) {
                 LOG.trace("Channel closed " + e);
             }
             allChannels.remove(ctx.getChannel());
         }
 
+        /**
+         * 连接建立时执行此方法
+         *
+         * @param ctx
+         * @param e
+         * @throws Exception
+         */
         @Override
         public void channelConnected(ChannelHandlerContext ctx,
-                ChannelStateEvent e) throws Exception
-        {
+                                     ChannelStateEvent e) throws Exception {
             if (LOG.isTraceEnabled()) {
                 LOG.trace("Channel connected " + e);
             }
@@ -121,8 +128,7 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
 
         @Override
         public void channelDisconnected(ChannelHandlerContext ctx,
-                ChannelStateEvent e) throws Exception
-        {
+                                        ChannelStateEvent e) throws Exception {
             if (LOG.isTraceEnabled()) {
                 LOG.trace("Channel disconnected " + e);
             }
@@ -137,8 +143,7 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e)
-            throws Exception
-        {
+                throws Exception {
             LOG.warn("Exception caught " + e, e.getCause());
             NettyServerCnxn cnxn = (NettyServerCnxn) ctx.getAttachment();
             if (cnxn != null) {
@@ -151,8 +156,7 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
 
         @Override
         public void messageReceived(ChannelHandlerContext ctx, MessageEvent e)
-            throws Exception
-        {
+                throws Exception {
             if (LOG.isTraceEnabled()) {
                 LOG.trace("message received called " + e.getMessage());
             }
@@ -161,16 +165,22 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
                     LOG.debug("New message " + e.toString()
                             + " from " + ctx.getChannel());
                 }
-                NettyServerCnxn cnxn = (NettyServerCnxn)ctx.getAttachment();
-                synchronized(cnxn) {
+                NettyServerCnxn cnxn = (NettyServerCnxn) ctx.getAttachment();
+                synchronized (cnxn) {
                     processMessage(e, cnxn);
                 }
-            } catch(Exception ex) {
+            } catch (Exception ex) {
                 LOG.error("Unexpected exception in receive", ex);
                 throw ex;
             }
         }
 
+        /**
+         * 读取数据
+         *
+         * @param e    MessageEvent
+         * @param cnxn NettyServerCnxn
+         */
         private void processMessage(MessageEvent e, NettyServerCnxn cnxn) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug(Long.toHexString(cnxn.sessionId) + " queuedBuffer: "
@@ -198,13 +208,13 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
                 }
                 cnxn.channel.setReadable(true);
             } else {
-                ChannelBuffer buf = (ChannelBuffer)e.getMessage();
+                ChannelBuffer buf = (ChannelBuffer) e.getMessage();
                 if (LOG.isTraceEnabled()) {
                     LOG.trace(Long.toHexString(cnxn.sessionId)
                             + " buf 0x"
                             + ChannelBuffers.hexDump(buf));
                 }
-                
+
                 if (cnxn.throttled) {
                     LOG.debug("Received message while throttled");
                     // we are throttled, so we need to queue
@@ -246,7 +256,7 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
                             if (LOG.isTraceEnabled()) {
                                 LOG.trace("Before copy " + buf);
                             }
-                            cnxn.queuedBuffer = dynamicBuffer(buf.readableBytes()); 
+                            cnxn.queuedBuffer = dynamicBuffer(buf.readableBytes());
                             cnxn.queuedBuffer.writeBytes(buf);
                             if (LOG.isTraceEnabled()) {
                                 LOG.trace("Copy is " + cnxn.queuedBuffer);
@@ -262,8 +272,7 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
 
         @Override
         public void writeComplete(ChannelHandlerContext ctx,
-                WriteCompletionEvent e) throws Exception
-        {
+                                  WriteCompletionEvent e) throws Exception {
             if (LOG.isTraceEnabled()) {
                 LOG.trace("write complete " + e);
             }
@@ -282,6 +291,7 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
             /**
              * Only allow the connection to stay open if certificate passes auth
              */
+            @Override
             public void operationComplete(ChannelFuture future)
                     throws SSLPeerUnverifiedException {
                 if (future.isSuccess()) {
@@ -322,10 +332,13 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
             }
         }
     }
-    
+
     CnxnChannelHandler channelHandler = new CnxnChannelHandler();
 
     NettyServerCnxnFactory() {
+        //设置bootstrap
+        //执行accept的线程数:1
+        //执行read/write的线程数:Runtime.getRuntime().availableProcessors() * 2
         bootstrap = new ServerBootstrap(
                 new NioServerSocketChannelFactory(
                         Executors.newCachedThreadPool(),
@@ -359,21 +372,20 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
         } else {
             sslContext = SSLContext.getInstance("TLSv1");
             X509AuthenticationProvider authProvider =
-                    (X509AuthenticationProvider)ProviderRegistry.getProvider(
+                    (X509AuthenticationProvider) ProviderRegistry.getProvider(
                             System.getProperty(ZKConfig.SSL_AUTHPROVIDER,
                                     "x509"));
 
-            if (authProvider == null)
-            {
+            if (authProvider == null) {
                 LOG.error("Auth provider not found: {}", authProviderProp);
                 throw new SSLContextException(
                         "Could not create SSLContext with specified auth provider: " +
-                        authProviderProp);
+                                authProviderProp);
             }
 
-            sslContext.init(new X509KeyManager[] { authProvider.getKeyManager() },
-                            new X509TrustManager[] { authProvider.getTrustManager() },
-                            null);
+            sslContext.init(new X509KeyManager[]{authProvider.getKeyManager()},
+                    new X509TrustManager[]{authProvider.getTrustManager()},
+                    null);
         }
 
         SSLEngine sslEngine = sslContext.createSSLEngine();
@@ -397,13 +409,22 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
                 cnxn.close();
             } catch (Exception e) {
                 LOG.warn("Ignoring exception closing cnxn sessionid 0x"
-                         + Long.toHexString(cnxn.getSessionId()), e);
+                        + Long.toHexString(cnxn.getSessionId()), e);
             }
         }
         if (LOG.isDebugEnabled()) {
             LOG.debug("allChannels size:" + allChannels.size() + " cnxns size:"
                     + length);
         }
+    }
+
+    @Override
+    public void configure(InetSocketAddress addr, int maxClientCnxns, boolean secure)
+            throws IOException {
+        configureSaslLogin();
+        localAddress = addr;
+        this.maxClientCnxns = maxClientCnxns;
+        this.secure = secure;
     }
 
     @Override
@@ -424,23 +445,17 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
         return false;
     }
 
-    @Override
-    public void configure(InetSocketAddress addr, int maxClientCnxns, boolean secure)
-            throws IOException
-    {
-        configureSaslLogin();
-        localAddress = addr;
-        this.maxClientCnxns = maxClientCnxns;
-        this.secure = secure;
-    }
-
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int getMaxClientCnxnsPerHost() {
         return maxClientCnxns;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setMaxClientCnxnsPerHost(int max) {
         maxClientCnxns = max;
@@ -452,10 +467,11 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
     }
 
     boolean killed;
+
     @Override
     public void join() throws InterruptedException {
-        synchronized(this) {
-            while(!killed) {
+        synchronized (this) {
+            while (!killed) {
                 wait();
             }
         }
@@ -478,32 +494,33 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
         if (zkServer != null) {
             zkServer.shutdown();
         }
-        synchronized(this) {
+        synchronized (this) {
             killed = true;
             notifyAll();
         }
     }
-    
+
     @Override
     public void start() {
         LOG.info("binding to port " + localAddress);
+        //绑定端口号,此操作是异步操作
         parentChannel = bootstrap.bind(localAddress);
     }
-    
+
     @Override
     public void reconfigure(InetSocketAddress addr) {
-       Channel oldChannel = parentChannel;
-       try {
-           LOG.info("binding to port {}", addr);
-           parentChannel = bootstrap.bind(addr);
-           localAddress = addr;
-       } catch (Exception e) {
-           LOG.error("Error while reconfiguring", e);
-       } finally {
-           oldChannel.close();
-       }
+        Channel oldChannel = parentChannel;
+        try {
+            LOG.info("binding to port {}", addr);
+            parentChannel = bootstrap.bind(addr);
+            localAddress = addr;
+        } catch (Exception e) {
+            LOG.error("Error while reconfiguring", e);
+        } finally {
+            oldChannel.close();
+        }
     }
-    
+
     @Override
     public void startup(ZooKeeperServer zks, boolean startServer)
             throws IOException, InterruptedException {
@@ -527,30 +544,30 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
 
     private void addCnxn(NettyServerCnxn cnxn) {
         cnxns.add(cnxn);
-        synchronized (ipMap){
+        synchronized (ipMap) {
             InetAddress addr =
-                ((InetSocketAddress)cnxn.channel.getRemoteAddress())
-                    .getAddress();
+                    ((InetSocketAddress) cnxn.channel.getRemoteAddress())
+                            .getAddress();
             Set<NettyServerCnxn> s = ipMap.get(addr);
             if (s == null) {
                 s = new HashSet<NettyServerCnxn>();
             }
             s.add(cnxn);
-            ipMap.put(addr,s);
+            ipMap.put(addr, s);
         }
     }
 
     @Override
     public void resetAllConnectionStats() {
         // No need to synchronize since cnxns is backed by a ConcurrentHashMap
-        for(ServerCnxn c : cnxns){
+        for (ServerCnxn c : cnxns) {
             c.resetStats();
         }
     }
 
     @Override
     public Iterable<Map<String, Object>> getAllConnectionInfo(boolean brief) {
-        Set<Map<String,Object>> info = new HashSet<Map<String,Object>>();
+        Set<Map<String, Object>> info = new HashSet<Map<String, Object>>();
         // No need to synchronize since cnxns is backed by a ConcurrentHashMap
         for (ServerCnxn c : cnxns) {
             info.add(c.getConnectionInfo(brief));

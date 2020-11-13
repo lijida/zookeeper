@@ -32,6 +32,7 @@ public class LeaderElectionBean implements LeaderElectionMXBean, ZKMBeanInfo {
         return "LeaderElection";
     }
 
+    @Override
     public boolean isHidden() {
         return false;
     }

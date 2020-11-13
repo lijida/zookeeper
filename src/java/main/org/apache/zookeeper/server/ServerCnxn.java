@@ -138,7 +138,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
     }
 
     /**
-     * 发送数据
+     * 发送数据,此方法是请求处理链将数据发送给网络IO的接口
      *
      * @param closeConn 待发送的数据
      */
@@ -482,8 +482,12 @@ public abstract class ServerCnxn implements Stats, Watcher {
         pwriter.print(")");
     }
 
+    /**
+     * @param brief 是否只返回简要信息
+     * @return 本连接的相关信息
+     */
     public synchronized Map<String, Object> getConnectionInfo(boolean brief) {
-        Map<String, Object> info = new LinkedHashMap<String, Object>();
+        Map<String, Object> info = new LinkedHashMap<>();
         info.put("remote_socket_address", getRemoteSocketAddress());
         info.put("interest_ops", getInterestOps());
         info.put("outstanding_requests", getOutstandingRequests());
